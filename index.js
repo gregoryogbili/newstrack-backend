@@ -14,7 +14,7 @@ const { Pool } = pkg;
    APP SETUP
    =========================== */
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 /* ===========================
    CORS CONFIG (LOCKED)
@@ -40,6 +40,14 @@ app.use(
     }
   })
 );
+
+/* ✅ Friendly CORS error response (prevents ugly crashes) */
+app.use((err, req, res, next) => {
+  if (err && String(err.message || "").startsWith("CORS blocked:")) {
+    return res.status(403).json({ error: err.message });
+  }
+  next(err);
+});
 
 app.use(express.json());
 
@@ -181,7 +189,7 @@ app.post("/posts", requireAuth, async (req, res) => {
    SERVER
    =========================== */
 app.listen(port, () => {
-  console.log(`✅ Server running on http://localhost:${port}`);
+  console.log(`✅ Server running on port ${port}`);
 });
 
 // ✅ Cron only (no HTTP exposure)
