@@ -6,6 +6,7 @@ import cors from "cors";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 
 dotenv.config();
 
@@ -39,6 +40,9 @@ const apiLimiter = rateLimit({
 
 app.use(apiLimiter);
 
+/* ===========================
+   CORS
+   =========================== */
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -54,13 +58,23 @@ app.use(
   })
 );
 
-/* ✅ Friendly CORS error response (prevents ugly crashes) */
+/* ✅ Friendly CORS error response */
 app.use((err, req, res, next) => {
   if (err && String(err.message || "").startsWith("CORS blocked:")) {
     return res.status(403).json({ error: err.message });
   }
   next(err);
 });
+
+/* ===========================
+   HELMET (SECURE HEADERS)
+   =========================== */
+app.use(
+  helmet({
+    // Keep things compatible while you’re still building
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
 
 app.use(express.json());
 
