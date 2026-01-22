@@ -14,15 +14,15 @@ export function startCron(pool) {
 
       for (const item of items) {
         await pool.query(
-          `INSERT INTO posts
-           (headline, description, is_external, source_name, source_url)
-           VALUES ($1, $2, true, $3, $4)
-           ON CONFLICT DO NOTHING`,
+          `INSERT INTO candidates
+           (headline, description, source_platform, source_name, source_url)
+           VALUES ($1, $2, 'rss', $3, $4)
+           ON CONFLICT (source_url) DO NOTHING`,
           [
             item.headline,
             item.description,
-            item.source_name,
-            item.source_url
+            item.source_name, // e.g. "BBC News"
+            item.source_url   // article link
           ]
         );
       }
