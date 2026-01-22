@@ -112,9 +112,29 @@ function requireAuth(req, res, next) {
 app.get("/", async (req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", database: "connected" });
+
+    res.json({
+      status: "ok",
+      service: "newstrack-backend",
+      database: "connected",
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      service: "newstrack-backend",
+      database: "disconnected",
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.status(200).json({ status: "healthy" });
   } catch {
-    res.status(500).json({ status: "error", database: "disconnected" });
+    res.status(500).json({ status: "unhealthy" });
   }
 });
 
