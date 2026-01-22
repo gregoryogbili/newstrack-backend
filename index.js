@@ -5,6 +5,7 @@ import { startCron } from "./services/cronService.js";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
@@ -25,6 +26,18 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3001",
   "http://localhost:3002"
 ];
+
+/* ===========================
+   RATE LIMITING (BASIC)
+   =========================== */
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // 300 requests per IP per window
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use(apiLimiter);
 
 app.use(
   cors({
