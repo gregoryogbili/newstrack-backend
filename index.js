@@ -233,6 +233,111 @@ app.post("/posts", requireAuth, async (req, res) => {
 });
 
 /* ===========================
+   CANDIDATES (INTERNAL)
+   =========================== */
+
+// Create a candidate (manual for now)
+app.post("/candidates", requireAuth, async (req, res) => {
+  const { headline, description, source_platform, source_name, source_url } =
+    req.body;
+
+  if (!headline || !headline.trim()) {
+    return res.status(400).json({ error: "Headline required" });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO candidates
+       (headline, description, source_platform, source_name, source_url)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        headline.trim(),
+        description || "",
+        source_platform || "manual",
+        source_name || null,
+        source_url || null
+      ]
+    );
+
+    res.status(201).json({ candidate: result.rows[0] });
+  } catch (err) {
+    if (String(err).includes("candidates_source_url_key")) {
+      return res.status(409).json({ error: "Duplicate source_url" });
+    }
+    res.status(500).json({ error: "Failed to create candidate" });
+  }
+});
+
+// List candidates (internal view)
+app.get("/candidates", requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `SELECT *
+     FROM candidates
+     ORDER BY created_at DESC`
+  );
+  res.json(result.rows);
+});
+
+// Promote candidate to post
+app.post("/candidates/:id/publish", requireAuth, async (req, res) => {
+  const candidateId = Number(req.params.id);
+
+  if (!candidateId) {
+    return res.status(400).json({ error: "Invalid candidate id" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const candidateRes = await client.query(
+      `SELECT * FROM candidates WHERE id = $1 FOR UPDATE`,
+      [candidateId]
+    );
+
+    const candidate = candidateRes.rows[0];
+    if (!candidate) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+
+    if (candidate.status === "published") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Already published" });
+    }
+
+    const postRes = await client.query(
+      `INSERT INTO posts
+       (headline, description, is_external, author_id)
+       VALUES ($1, $2, true, NULL)
+       RETURNING *`,
+      [candidate.headline, candidate.description]
+    );
+
+    await client.query(
+      `UPDATE candidates
+       SET status = 'published', published_at = NOW()
+       WHERE id = $1`,
+      [candidateId]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Candidate published",
+      post: postRes.rows[0]
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(500).json({ error: "Publish failed" });
+  } finally {
+    client.release();
+  }
+});
+
+/* ===========================
    SERVER
    =========================== */
 app.listen(port, () => {
