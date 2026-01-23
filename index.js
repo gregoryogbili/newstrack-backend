@@ -29,11 +29,11 @@ const ALLOWED_ORIGINS = [
 ];
 
 /* ===========================
-   RATE LIMITING (BASIC)
+   RATE LIMITING
    =========================== */
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // 300 requests per IP per window
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -46,19 +46,13 @@ app.use(apiLimiter);
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow server-to-server, Postman, cron, curl
       if (!origin) return cb(null, true);
-
-      if (ALLOWED_ORIGINS.includes(origin)) {
-        return cb(null, true);
-      }
-
+      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       return cb(new Error("CORS blocked: " + origin));
     }
   })
 );
 
-/* ✅ Friendly CORS error response */
 app.use((err, req, res, next) => {
   if (err && String(err.message || "").startsWith("CORS blocked:")) {
     return res.status(403).json({ error: err.message });
@@ -67,11 +61,10 @@ app.use((err, req, res, next) => {
 });
 
 /* ===========================
-   HELMET (SECURE HEADERS)
+   HELMET
    =========================== */
 app.use(
   helmet({
-    // Keep things compatible while you’re still building
     crossOriginResourcePolicy: { policy: "cross-origin" }
   })
 );
@@ -99,11 +92,18 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { id, role }
+    req.user = payload;
     next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+}
+
+/* ===========================
+   ✅ CANDIDATE STATUS HELPER
+   =========================== */
+function isValidCandidateStatus(status) {
+  return ["new", "queued", "ignored"].includes(status);
 }
 
 /* ===========================
@@ -112,27 +112,21 @@ function requireAuth(req, res, next) {
 app.get("/", async (req, res) => {
   try {
     await pool.query("SELECT 1");
-
     res.json({
       status: "ok",
       service: "newstrack-backend",
       database: "connected",
       timestamp: new Date().toISOString()
     });
-  } catch (err) {
-    res.status(500).json({
-      status: "error",
-      service: "newstrack-backend",
-      database: "disconnected",
-      timestamp: new Date().toISOString()
-    });
+  } catch {
+    res.status(500).json({ status: "error" });
   }
 });
 
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.status(200).json({ status: "healthy" });
+    res.json({ status: "healthy" });
   } catch {
     res.status(500).json({ status: "unhealthy" });
   }
@@ -142,22 +136,19 @@ app.get("/health", async (req, res) => {
    AUTH ROUTES
    =========================== */
 app.post("/auth/register", async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password)
+    return res.status(400).json({ error: "Missing fields" });
+
+  const password_hash = await bcrypt.hash(password, 10);
+
   try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: "name, email, password required" });
-    }
-
-    const password_hash = await bcrypt.hash(password, 10);
-
     const result = await pool.query(
       `INSERT INTO users (name, email, password_hash, role)
        VALUES ($1, $2, $3, 'journalist')
        RETURNING id, name, email, role, created_at`,
       [name.trim(), email.trim().toLowerCase(), password_hash]
     );
-
     res.status(201).json({ user: result.rows[0] });
   } catch (err) {
     if (String(err).includes("users_email_unique")) {
@@ -168,38 +159,26 @@ app.post("/auth/register", async (req, res) => {
 });
 
 app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
-    const result = await pool.query(
-      `SELECT id, name, email, role, password_hash
-       FROM users WHERE email = $1`,
-      [email.trim().toLowerCase()]
-    );
-
-    const user = result.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ token, user });
-  } catch {
-    res.status(500).json({ error: "Login failed" });
-  }
-});
-
-app.get("/auth/me", requireAuth, async (req, res) => {
   const result = await pool.query(
-    `SELECT id, name, email, role, created_at FROM users WHERE id = $1`,
-    [req.user.id]
+    `SELECT id, name, email, role, password_hash
+     FROM users WHERE email = $1`,
+    [email.trim().toLowerCase()]
   );
-  res.json({ user: result.rows[0] });
+
+  const user = result.rows[0];
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const token = jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  res.json({ token, user });
 });
 
 /* ===========================
@@ -215,126 +194,51 @@ app.get("/posts", async (req, res) => {
   res.json(result.rows);
 });
 
-app.post("/posts", requireAuth, async (req, res) => {
-  const { headline, description } = req.body;
-
-  if (!headline?.trim()) {
-    return res.status(400).json({ error: "Headline required" });
-  }
-
-  const result = await pool.query(
-    `INSERT INTO posts (headline, description, is_external, author_id)
-     VALUES ($1, $2, false, $3)
-     RETURNING *`,
-    [headline.trim(), description || "", req.user.id]
-  );
-
-  res.status(201).json({ post: result.rows[0] });
-});
-
 /* ===========================
-   CANDIDATES (INTERNAL)
+   CANDIDATES
    =========================== */
-
-// Create a candidate (manual for now)
-app.post("/candidates", requireAuth, async (req, res) => {
-  const { headline, description, source_platform, source_name, source_url } =
-    req.body;
-
-  if (!headline || !headline.trim()) {
-    return res.status(400).json({ error: "Headline required" });
-  }
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO candidates
-       (headline, description, source_platform, source_name, source_url)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [
-        headline.trim(),
-        description || "",
-        source_platform || "manual",
-        source_name || null,
-        source_url || null
-      ]
-    );
-
-    res.status(201).json({ candidate: result.rows[0] });
-  } catch (err) {
-    if (String(err).includes("candidates_source_url_key")) {
-      return res.status(409).json({ error: "Duplicate source_url" });
-    }
-    res.status(500).json({ error: "Failed to create candidate" });
-  }
-});
-
-// List candidates (internal view)
 app.get("/candidates", requireAuth, async (req, res) => {
   const result = await pool.query(
-    `SELECT *
-     FROM candidates
-     ORDER BY created_at DESC`
+    `SELECT * FROM candidates ORDER BY created_at DESC`
   );
   res.json(result.rows);
 });
 
-// Promote candidate to post
-app.post("/candidates/:id/publish", requireAuth, async (req, res) => {
+/* ===========================
+   ✅ UPDATE CANDIDATE STATUS
+   =========================== */
+app.patch("/candidates/:id/status", requireAuth, async (req, res) => {
   const candidateId = Number(req.params.id);
+  const { status } = req.body;
 
   if (!candidateId) {
     return res.status(400).json({ error: "Invalid candidate id" });
   }
 
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    const candidateRes = await client.query(
-      `SELECT * FROM candidates WHERE id = $1 FOR UPDATE`,
-      [candidateId]
-    );
-
-    const candidate = candidateRes.rows[0];
-    if (!candidate) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Candidate not found" });
-    }
-
-    if (candidate.status === "published") {
-      await client.query("ROLLBACK");
-      return res.status(409).json({ error: "Already published" });
-    }
-
-    const postRes = await client.query(
-      `INSERT INTO posts
-       (headline, description, is_external, author_id)
-       VALUES ($1, $2, true, NULL)
-       RETURNING *`,
-      [candidate.headline, candidate.description]
-    );
-
-    await client.query(
-      `UPDATE candidates
-       SET status = 'published', published_at = NOW()
-       WHERE id = $1`,
-      [candidateId]
-    );
-
-    await client.query("COMMIT");
-
-    res.json({
-      message: "Candidate published",
-      post: postRes.rows[0]
+  if (!isValidCandidateStatus(status)) {
+    return res.status(400).json({
+      error: "Invalid status. Allowed: new, queued, ignored"
     });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    res.status(500).json({ error: "Publish failed" });
-  } finally {
-    client.release();
   }
+
+  const result = await pool.query(
+    `UPDATE candidates
+     SET status = $1
+     WHERE id = $2 AND status != 'published'
+     RETURNING *`,
+    [status, candidateId]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({
+      error: "Candidate not found or already published"
+    });
+  }
+
+  res.json({
+    message: "Candidate status updated",
+    candidate: result.rows[0]
+  });
 });
 
 /* ===========================
@@ -344,5 +248,4 @@ app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
 });
 
-// ✅ Cron only (no HTTP exposure)
 startCron(pool);
