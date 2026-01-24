@@ -2,7 +2,29 @@ import Parser from "rss-parser";
 import crypto from "crypto";
 
 /**
- * Infer a coarse news category from the headline
+ * Tiny deterministic scoring helper (EXPLAINABLE)
+ */
+function computeInitialScore(headline = "", category = "") {
+  const text = headline.toLowerCase();
+  let score = 0;
+
+  // Breaking / violence / urgency
+  if (/(kill|dies|dead|attack|explosion|arrest)/.test(text)) score += 30;
+
+  // Geopolitics
+  if (/(ukraine|russia|china|israel|gaza|nato)/.test(text)) score += 20;
+
+  // Disasters
+  if (/(storm|flood|landslide|earthquake|fire)/.test(text)) score += 10;
+
+  // Non-world stories get a slight novelty boost
+  if (category && category !== "world") score += 10;
+
+  return score;
+}
+
+/**
+ * Infer a coarse category from headline text
  */
 function inferCategory(headline = "") {
   const text = headline.toLowerCase();
@@ -17,42 +39,11 @@ function inferCategory(headline = "") {
   return "world";
 }
 
-/**
- * Calculate deterministic initial score (0–100)
- */
-function calculateInitialScore({ category, publishedAt, headline }) {
-  let score = 0;
-
-  // Rule 1 — Breaking boost (last 2 hours)
-  if (publishedAt) {
-    const ageMinutes =
-      (Date.now() - new Date(publishedAt).getTime()) / 60000;
-    if (ageMinutes <= 120) score += 30;
-  }
-
-  // Rule 2 — Serious category boost
-  if (["world", "politics", "courts", "security", "science"].includes(category)) {
-    score += 20;
-  }
-
-  // Rule 3 — Opinion penalty
-  if (/opinion|analysis|comment/i.test(headline)) {
-    score -= 30;
-  }
-
-  // Rule 4 — Sensationalism penalty
-  if (/shocking|you won’t believe|blow your mind/i.test(headline)) {
-    score -= 40;
-  }
-
-  return Math.max(0, Math.min(100, score));
-}
-
 const parser = new Parser();
 const BBC_WORLD_RSS = "http://feeds.bbci.co.uk/news/world/rss.xml";
 
 /**
- * Ingest BBC World RSS into candidates
+ * Ingest BBC World RSS into candidates table
  */
 export async function ingestBBCWorldRSS(pool) {
   const feed = await parser.parseURL(BBC_WORLD_RSS);
@@ -64,26 +55,24 @@ export async function ingestBBCWorldRSS(pool) {
     const headline = item.title?.trim();
     const summary = item.contentSnippet || "";
     const sourceUrl = item.link;
-    const publishedAt = item.pubDate || null;
 
     if (!headline || !sourceUrl) {
       skipped++;
       continue;
     }
 
-    // ✅ Step 3 — Infer category
+    // 1️⃣ Infer category
     const category = inferCategory(headline);
 
-    // Optional scoring (already in your pipeline)
-    const initialScore = calculateInitialScore({
-      category,
-      publishedAt,
-      headline
-    });
+    // 2️⃣ Compute score
+    const initialScore = computeInitialScore(headline, category);
 
-    // Decide status at insert time
-    const status = initialScore >= 50 ? "queued" : "new";
+    // 3️⃣ Decide status at INSERT time
+    let status = "new";
+    if (initialScore >= 70) status = "queued";
+    else if (initialScore < 40) status = "ignored";
 
+    // 4️⃣ Deduplication hash
     const contentHash = crypto
       .createHash("sha256")
       .update(headline + sourceUrl)
@@ -95,40 +84,27 @@ export async function ingestBBCWorldRSS(pool) {
         INSERT INTO candidates (
           headline,
           summary,
-          source_platform,
           source_name,
           source_url,
           category,
-          source_tier,
+          source_platform,
           status,
-          published_at,
-          content_hash,
-          initial_score
+          initial_score,
+          content_hash
         )
-        VALUES (
-          $1,
-          $2,
-          'rss',
-          'BBC News',
-          $3,
-          $4,
-          1,
-          $5,
-          $6,
-          $7,
-          $8
-        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT (content_hash) DO NOTHING
         `,
         [
           headline,
           summary,
+          "BBC News",
           sourceUrl,
           category,
+          "rss",
           status,
-          publishedAt,
-          contentHash,
-          initialScore
+          initialScore,
+          contentHash
         ]
       );
 
