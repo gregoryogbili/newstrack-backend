@@ -7,6 +7,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import { ingestBBCWorldRSS } from "./services/rssIngest.js";
 
 dotenv.config();
 
@@ -239,6 +240,23 @@ app.patch("/candidates/:id/status", requireAuth, async (req, res) => {
     message: "Candidate status updated",
     candidate: result.rows[0]
   });
+});
+
+app.post("/ingest/rss", async (req, res) => {
+  try {
+    const result = await ingestBBCWorldRSS(pool);
+    res.json({
+      status: "ok",
+      source: "BBC World RSS",
+      inserted: result.inserted,
+      skipped: result.skipped
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "RSS ingestion failed"
+    });
+  }
 });
 
 /* ===========================
