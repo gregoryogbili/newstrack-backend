@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 import crypto from "crypto";
 
-console.log("RSS INGEST SERVICE LOADED");
+console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 
 // force redeploy – RSS scoring update
 
@@ -9,7 +9,7 @@ console.log("RSS INGEST SERVICE LOADED");
  * Tiny deterministic scoring helper (EXPLAINABLE)
  */
 function computeInitialScore(headline = "", category = "") {
-console.log("SCORING:", headline);
+console.log("🧮 SCORING HEADLINE:", headline);
 
   const text = headline.toLowerCase();
   let score = 0;
