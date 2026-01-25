@@ -7,6 +7,8 @@ import crypto from "crypto";
  * Tiny deterministic scoring helper (EXPLAINABLE)
  */
 function computeInitialScore(headline = "", category = "") {
+console.log("SCORING:", headline);
+
   const text = headline.toLowerCase();
   let score = 0;
 
