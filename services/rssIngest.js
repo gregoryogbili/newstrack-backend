@@ -1,6 +1,8 @@
 import Parser from "rss-parser";
 import crypto from "crypto";
 
+// force redeploy – RSS scoring update
+
 /**
  * Tiny deterministic scoring helper (EXPLAINABLE)
  */
