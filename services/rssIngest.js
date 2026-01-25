@@ -1,6 +1,8 @@
 import Parser from "rss-parser";
 import crypto from "crypto";
 
+console.log("RSS INGEST SERVICE LOADED");
+
 // force redeploy – RSS scoring update
 
 /**
