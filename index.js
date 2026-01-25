@@ -13,6 +13,8 @@ dotenv.config();
 
 const { Pool } = pkg;
 
+console.log("🔥 INDEX.JS LOADED — REAL ENTRYPOINT 🔥");
+
 /* ===========================
    APP SETUP
    =========================== */
