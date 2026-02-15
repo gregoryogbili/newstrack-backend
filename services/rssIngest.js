@@ -3,31 +3,8 @@ import crypto from "crypto";
 
 console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 
-// force redeploy – RSS scoring update
-
-/**
- * Tiny deterministic scoring helper (EXPLAINABLE)
- */
-function computeInitialScore(headline = "", category = "") {
-console.log("🧮 SCORING HEADLINE:", headline);
-
-  const text = headline.toLowerCase();
-  let score = 0;
-
-  // Breaking / violence / urgency
-  if (/(kill|dies|dead|attack|explosion|arrest)/.test(text)) score += 30;
-
-  // Geopolitics
-  if (/(ukraine|russia|china|israel|gaza|nato)/.test(text)) score += 20;
-
-  // Disasters
-  if (/(storm|flood|landslide|earthquake|fire)/.test(text)) score += 10;
-
-  // Non-world stories get a slight novelty boost
-  if (category && category !== "world") score += 10;
-
-  return score;
-}
+const parser = new Parser();
+const BBC_WORLD_RSS = "http://feeds.bbci.co.uk/news/world/rss.xml";
 
 /**
  * Infer a coarse category from headline text
@@ -45,8 +22,51 @@ function inferCategory(headline = "") {
   return "world";
 }
 
-const parser = new Parser();
-const BBC_WORLD_RSS = "http://feeds.bbci.co.uk/news/world/rss.xml";
+/**
+ * Time-based breaking boost
+ */
+function computeTimeBoost(pubDate) {
+  if (!pubDate) return 0;
+
+  const published = new Date(pubDate).getTime();
+  const now = Date.now();
+  const diffMinutes = (now - published) / (1000 * 60);
+
+  if (diffMinutes <= 60) return 25;      // within 1 hour
+  if (diffMinutes <= 180) return 15;     // within 3 hours
+  if (diffMinutes <= 360) return 10;     // within 6 hours
+
+  return 0;
+}
+
+/**
+ * Deterministic explainable scoring
+ */
+function computeInitialScore(headline = "", category = "", pubDate = null) {
+  console.log("🧮 SCORING:", headline);
+
+  const text = headline.toLowerCase();
+  let score = 0;
+
+  // Breaking / violence / urgency
+  if (/(kill|dies|dead|attack|explosion|arrest)/.test(text)) score += 30;
+
+  // Geopolitics
+  if (/(ukraine|russia|china|israel|gaza|nato)/.test(text)) score += 20;
+
+  // Disasters
+  if (/(storm|flood|landslide|earthquake|fire)/.test(text)) score += 10;
+
+  // Novelty boost for non-world
+  if (category && category !== "world") score += 10;
+
+  // 🔥 Time-based breaking boost
+  score += computeTimeBoost(pubDate);
+
+  console.log("➡ Final score:", score);
+
+  return score;
+}
 
 /**
  * Ingest BBC World RSS into candidates table
@@ -61,6 +81,7 @@ export async function ingestBBCWorldRSS(pool) {
     const headline = item.title?.trim();
     const summary = item.contentSnippet || "";
     const sourceUrl = item.link;
+    const pubDate = item.pubDate || item.isoDate || null;
 
     if (!headline || !sourceUrl) {
       skipped++;
@@ -70,15 +91,15 @@ export async function ingestBBCWorldRSS(pool) {
     // 1️⃣ Infer category
     const category = inferCategory(headline);
 
-    // 2️⃣ Compute score
-    const initialScore = computeInitialScore(headline, category);
+    // 2️⃣ Compute score (includes time boost)
+    const initialScore = computeInitialScore(headline, category, pubDate);
 
-    // 3️⃣ Decide status at INSERT time
+    // 3️⃣ Decide status
     let status = "new";
     if (initialScore >= 55) status = "queued";
     else if (initialScore < 25) status = "ignored";
 
-    // 4️⃣ Deduplication hash
+    // 4️⃣ Deduplication
     const contentHash = crypto
       .createHash("sha256")
       .update(headline + sourceUrl)
@@ -96,9 +117,10 @@ export async function ingestBBCWorldRSS(pool) {
           source_platform,
           status,
           initial_score,
-          content_hash
+          content_hash,
+          published_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (content_hash) DO NOTHING
         `,
         [
@@ -110,7 +132,8 @@ export async function ingestBBCWorldRSS(pool) {
           "rss",
           status,
           initialScore,
-          contentHash
+          contentHash,
+          pubDate
         ]
       );
 
