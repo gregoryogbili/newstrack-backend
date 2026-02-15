@@ -169,6 +169,24 @@ app.post("/auth/login", async (req, res) => {
 });
 
 /* ===========================
+   CLEANUP JOB
+=========================== */
+
+setInterval(async () => {
+  try {
+    const result = await pool.query(`
+      DELETE FROM candidates
+      WHERE status = 'ignored'
+      AND discovered_at < NOW() - INTERVAL '3 days'
+    `);
+
+    console.log(`🧹 Cleanup removed ${result.rowCount} old ignored rows`);
+  } catch (err) {
+    console.error("Cleanup error:", err);
+  }
+}, 60 * 60 * 1000);
+
+/* ===========================
    POSTS
 =========================== */
 
@@ -204,7 +222,7 @@ app.get("/candidates", requireAuth, async (req, res) => {
 });
 
 /* ===========================
-   RSS INGEST (Manual Trigger)
+   RSS INGEST
 =========================== */
 
 app.post("/ingest/rss", async (req, res) => {
@@ -218,6 +236,52 @@ app.post("/ingest/rss", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "RSS ingestion failed" });
+  }
+});
+
+/* ===========================
+   🔥 PUBLISH QUEUED ARTICLES
+=========================== */
+
+app.post("/publish", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT * FROM candidates
+      WHERE status = 'queued'
+      ORDER BY initial_score DESC
+      LIMIT 10
+    `);
+
+    let publishedCount = 0;
+
+    for (const candidate of result.rows) {
+      await pool.query(
+        `
+        INSERT INTO posts (headline, description, is_external)
+        VALUES ($1, $2, true)
+        `,
+        [candidate.headline, candidate.summary]
+      );
+
+      await pool.query(
+        `
+        UPDATE candidates
+        SET status = 'published'
+        WHERE id = $1
+        `,
+        [candidate.id]
+      );
+
+      publishedCount++;
+    }
+
+    res.json({
+      status: "ok",
+      published: publishedCount
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Publish failed" });
   }
 });
 
