@@ -1,35 +1,37 @@
 import cron from "node-cron";
-import { fetchRSS } from "./rssService.js";
+import { ingestAllFeeds } from "./rssIngest.js";
 
 /**
- * Start RSS mining on a schedule
+ * Start automated RSS ingestion
  */
 export function startCron(pool) {
-  // Runs every 30 minutes
-  cron.schedule("*/30 * * * *", async () => {
-    console.log("⏱️ Running scheduled RSS mining...");
+
+  console.log("🕒 RSS Cron Service Started");
+
+  // Run every 15 minutes
+  cron.schedule("*/15 * * * *", async () => {
+
+    console.log("⏱️ Running scheduled multi-feed ingestion...");
 
     try {
-      const items = await fetchRSS();
+      // 1️⃣ Ingest fresh content
+      const result = await ingestAllFeeds(pool);
 
-      for (const item of items) {
-        await pool.query(
-          `INSERT INTO candidates
-           (headline, description, source_platform, source_name, source_url)
-           VALUES ($1, $2, 'rss', $3, $4)
-           ON CONFLICT (source_url) DO NOTHING`,
-          [
-            item.headline,
-            item.description,
-            item.source_name, // e.g. "BBC News"
-            item.source_url   // article link
-          ]
-        );
-      }
+      console.log(
+        `✅ Ingestion complete | inserted=${result.inserted} skipped=${result.skipped}`
+      );
 
-      console.log(`✅ RSS mining complete (${items.length} items)`);
+      // 2️⃣ Cleanup old content (older than 7 days)
+      const cleanup = await pool.query(`
+        DELETE FROM candidates
+        WHERE discovered_at < NOW() - INTERVAL '7 days'
+      `);
+
+      console.log(`🧹 Cleanup removed ${cleanup.rowCount} old rows`);
+
     } catch (err) {
       console.error("❌ RSS cron failed:", err.message);
     }
+
   });
 }
