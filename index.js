@@ -7,7 +7,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { ingestBBCWorldRSS } from "./services/rssIngest.js";
+import { ingestAllFeeds } from "./services/rssIngest.js";
 
 dotenv.config();
 const { Pool } = pkg;
@@ -289,7 +289,7 @@ app.get("/candidates", requireAuth, async (req, res) => {
 
 app.post("/ingest/rss", async (req, res) => {
   try {
-    const result = await ingestBBCWorldRSS(pool);
+    const result = await ingestAllFeeds(pool);
     res.json({
       status: "ok",
       inserted: result.inserted,
