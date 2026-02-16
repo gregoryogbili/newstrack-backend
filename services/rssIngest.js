@@ -96,8 +96,10 @@ export async function ingestBBCWorldRSS(pool) {
 
     // 3️⃣ Decide status
     let status = "new";
-    if (initialScore >= 55) status = "queued";
-    else if (initialScore < 25) status = "ignored";
+    if (initialScore >= 70) status = "breaking";
+  else if (initialScore >= 55) status = "published";
+  else if (initialScore >= 40) status = "background";
+  else if (initialScore < 25) status = "ignored";
 
     // 4️⃣ Deduplication
     const contentHash = crypto
