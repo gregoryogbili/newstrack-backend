@@ -15,7 +15,7 @@ function inferCategory(headline = "") {
   if (/(ukraine|russia|nato|israel|gaza)/.test(text)) return "geopolitics";
   if (/(election|pm|president|minister)/.test(text)) return "politics";
   if (/(court|trial|sentence|arrested)/.test(text)) return "law";
-  if (/(storm|flood|earthquake|landslide)/.test(text)) return "disaster";
+  if (/(storm|flood|earthquake|landslide|fire)/.test(text)) return "disaster";
   if (/(tech|ai|data|cyber)/.test(text)) return "technology";
   if (/(inflation|economy|markets|trade)/.test(text)) return "economy";
 
@@ -29,12 +29,14 @@ function computeTimeBoost(pubDate) {
   if (!pubDate) return 0;
 
   const published = new Date(pubDate).getTime();
+  if (isNaN(published)) return 0;
+
   const now = Date.now();
   const diffMinutes = (now - published) / (1000 * 60);
 
-  if (diffMinutes <= 60) return 25;      // within 1 hour
-  if (diffMinutes <= 180) return 15;     // within 3 hours
-  if (diffMinutes <= 360) return 10;     // within 6 hours
+  if (diffMinutes <= 60) return 25;   // 1 hour
+  if (diffMinutes <= 180) return 15;  // 3 hours
+  if (diffMinutes <= 360) return 10;  // 6 hours
 
   return 0;
 }
@@ -48,19 +50,27 @@ function computeInitialScore(headline = "", category = "", pubDate = null) {
   const text = headline.toLowerCase();
   let score = 0;
 
-  // Breaking / violence / urgency
-  if (/(kill|dies|dead|attack|explosion|arrest)/.test(text)) score += 30;
+  // Violence / urgency
+  if (/(kill|killed|dies|dead|attack|explosion|arrest)/.test(text)) {
+    score += 30;
+  }
 
   // Geopolitics
-  if (/(ukraine|russia|china|israel|gaza|nato)/.test(text)) score += 20;
+  if (/(ukraine|russia|china|israel|gaza|nato|iran)/.test(text)) {
+    score += 20;
+  }
 
   // Disasters
-  if (/(storm|flood|landslide|earthquake|fire)/.test(text)) score += 10;
+  if (/(storm|flood|landslide|earthquake|fire)/.test(text)) {
+    score += 10;
+  }
 
-  // Novelty boost for non-world
-  if (category && category !== "world") score += 10;
+  // Category boost (non generic world)
+  if (category && category !== "world") {
+    score += 10;
+  }
 
-  // 🔥 Time-based breaking boost
+  // Time boost
   score += computeTimeBoost(pubDate);
 
   console.log("➡ Final score:", score);
@@ -77,7 +87,7 @@ export async function ingestBBCWorldRSS(pool) {
   let inserted = 0;
   let skipped = 0;
 
-  for (const item of feed.items.slice(0, 10)) {
+  for (const item of feed.items.slice(0, 15)) {
     const headline = item.title?.trim();
     const summary = item.contentSnippet || "";
     const sourceUrl = item.link;
@@ -88,20 +98,22 @@ export async function ingestBBCWorldRSS(pool) {
       continue;
     }
 
-    // 1️⃣ Infer category
     const category = inferCategory(headline);
-
-    // 2️⃣ Compute score (includes time boost)
     const initialScore = computeInitialScore(headline, category, pubDate);
 
-    // 3️⃣ Decide status
+    // 🔥 STATUS TIERS
     let status = "new";
-    if (initialScore >= 70) status = "breaking";
-  else if (initialScore >= 55) status = "published";
-  else if (initialScore >= 40) status = "background";
-  else if (initialScore < 25) status = "ignored";
 
-    // 4️⃣ Deduplication
+    if (initialScore >= 70) {
+      status = "breaking";
+    } else if (initialScore >= 55) {
+      status = "published";
+    } else if (initialScore >= 40) {
+      status = "background";
+    } else if (initialScore < 25) {
+      status = "ignored";
+    }
+
     const contentHash = crypto
       .createHash("sha256")
       .update(headline + sourceUrl)
@@ -135,14 +147,15 @@ export async function ingestBBCWorldRSS(pool) {
           status,
           initialScore,
           contentHash,
-          pubDate
+          pubDate ? new Date(pubDate) : null
         ]
       );
 
       if (result.rowCount === 0) skipped++;
       else inserted++;
+
     } catch (err) {
-      console.error("RSS insert failed:", err.message);
+      console.error("❌ RSS insert failed:", err.message);
       skipped++;
     }
   }
