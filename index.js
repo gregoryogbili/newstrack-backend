@@ -201,7 +201,53 @@ app.get("/posts", async (req, res) => {
 });
 
 /* ===========================
-   CANDIDATES
+   ✅ FEED (PUBLIC)
+   - We don’t rely on DB statuses like 'breaking/background' (not in your schema).
+   - We compute a "bucket" in SQL:
+       breaking   = last 2 hours AND score >= 55
+       published  = status = 'published'
+       background = everything else (new/queued/ignored older stuff)
+=========================== */
+
+app.get("/feed", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        headline,
+        summary,
+        source_name,
+        source_url,
+        category,
+        status,
+        initial_score,
+        discovered_at,
+        CASE
+          WHEN discovered_at >= NOW() - INTERVAL '2 hours' AND initial_score >= 55 THEN 'breaking'
+          WHEN status = 'published' THEN 'published'
+          ELSE 'background'
+        END AS feed_bucket
+      FROM candidates
+      ORDER BY
+        CASE
+          WHEN (discovered_at >= NOW() - INTERVAL '2 hours' AND initial_score >= 55) THEN 1
+          WHEN status = 'published' THEN 2
+          ELSE 3
+        END,
+        initial_score DESC,
+        discovered_at DESC
+      LIMIT 50
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Feed error:", err.message);
+    res.status(500).json({ error: "Feed failed" });
+  }
+});
+
+/* ===========================
+   CANDIDATES (AUTH)
 =========================== */
 
 app.get("/candidates", requireAuth, async (req, res) => {
@@ -240,10 +286,11 @@ app.post("/ingest/rss", async (req, res) => {
 });
 
 /* ===========================
-   🔥 PUBLISH QUEUED ARTICLES
+   🔥 PUBLISH QUEUED ARTICLES (AUTH)
+   NOTE: this is POST not GET, so "Cannot GET /publish" is expected.
 =========================== */
 
-app.post("/publish", async (req, res) => {
+app.post("/publish", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT * FROM candidates
