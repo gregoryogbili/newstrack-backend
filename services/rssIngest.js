@@ -4,7 +4,57 @@ import crypto from "crypto";
 console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 
 const parser = new Parser();
-const BBC_WORLD_RSS = "http://feeds.bbci.co.uk/news/world/rss.xml";
+
+/* ===========================
+   ROBUST FEED SET (~25)
+   (high quality, stable)
+=========================== */
+const FEEDS = [
+  // BBC
+  { name: "BBC World", url: "http://feeds.bbci.co.uk/news/world/rss.xml" },
+  { name: "BBC UK", url: "http://feeds.bbci.co.uk/news/uk/rss.xml" },
+  { name: "BBC Business", url: "http://feeds.bbci.co.uk/news/business/rss.xml" },
+  { name: "BBC Technology", url: "http://feeds.bbci.co.uk/news/technology/rss.xml" },
+
+  // Reuters Best (Agency feeds)
+  { name: "Reuters World", url: "https://www.reutersagency.com/feed/?best-topics=world&post_type=best" },
+  { name: "Reuters Business", url: "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best" },
+
+  // DW
+  { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top" },
+  { name: "DW World", url: "https://rss.dw.com/rdf/rss-en-world" },
+
+  // Middle East / International
+  { name: "Al Jazeera (All)", url: "https://www.aljazeera.com/xml/rss/all.xml" },
+
+  // UK / Global publishers
+  { name: "Sky News World", url: "https://feeds.skynews.com/feeds/rss/world.xml" },
+  { name: "The Guardian World", url: "https://www.theguardian.com/world/rss" },
+  { name: "The Guardian Business", url: "https://www.theguardian.com/business/rss" },
+  { name: "The Guardian Technology", url: "https://www.theguardian.com/uk/technology/rss" },
+
+  // US major
+  { name: "CNN Top Stories", url: "http://rss.cnn.com/rss/cnn_topstories.rss" },
+  { name: "NBC Top Stories", url: "http://feeds.nbcnews.com/feeds/topstories" },
+  { name: "ABC News Top Stories", url: "http://feeds.abcnews.com/abcnews/topstories" },
+
+  // NYT
+  { name: "NYT World", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml" },
+  { name: "NYT Technology", url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml" },
+
+  // NPR
+  { name: "NPR World", url: "https://feeds.npr.org/1004/rss.xml" },
+
+  // Tech
+  { name: "TechCrunch", url: "https://techcrunch.com/feed/" },
+  { name: "The Verge", url: "https://www.theverge.com/rss/index.xml" },
+  { name: "WIRED", url: "https://www.wired.com/rss/" },
+  { name: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index" },
+
+  // Science / Space (NASA)
+  { name: "NASA Recently Published", url: "https://www.nasa.gov/feed/" },
+  { name: "NASA News Releases", url: "https://www.nasa.gov/news-release/feed/" }
+];
 
 /**
  * Infer a coarse category from headline text
@@ -45,8 +95,6 @@ function computeTimeBoost(pubDate) {
  * Deterministic explainable scoring
  */
 function computeInitialScore(headline = "", category = "", pubDate = null) {
-  console.log("🧮 SCORING:", headline);
-
   const text = headline.toLowerCase();
   let score = 0;
 
@@ -73,16 +121,14 @@ function computeInitialScore(headline = "", category = "", pubDate = null) {
   // Time boost
   score += computeTimeBoost(pubDate);
 
-  console.log("➡ Final score:", score);
-
   return score;
 }
 
-/**
- * Ingest BBC World RSS into candidates table
- */
-export async function ingestBBCWorldRSS(pool) {
-  const feed = await parser.parseURL(BBC_WORLD_RSS);
+/* ===========================
+   INTERNAL: INGEST ONE FEED
+=========================== */
+async function ingestOneFeed(pool, feedConfig) {
+  const feed = await parser.parseURL(feedConfig.url);
 
   let inserted = 0;
   let skipped = 0;
@@ -140,7 +186,7 @@ export async function ingestBBCWorldRSS(pool) {
         [
           headline,
           summary,
-          "BBC News",
+          feedConfig.name,
           sourceUrl,
           category,
           "rss",
@@ -153,12 +199,43 @@ export async function ingestBBCWorldRSS(pool) {
 
       if (result.rowCount === 0) skipped++;
       else inserted++;
-
     } catch (err) {
-      console.error("❌ RSS insert failed:", err.message);
+      console.error(`❌ RSS insert failed (${feedConfig.name}):`, err.message);
       skipped++;
     }
   }
 
   return { inserted, skipped };
+}
+
+/**
+ * ✅ NEW: Ingest ALL FEEDS (robust mode)
+ */
+export async function ingestAllFeeds(pool) {
+  let inserted = 0;
+  let skipped = 0;
+
+  for (const feedConfig of FEEDS) {
+    console.log(`🌍 Processing: ${feedConfig.name}`);
+
+    try {
+      const res = await ingestOneFeed(pool, feedConfig);
+      inserted += res.inserted;
+      skipped += res.skipped;
+      console.log(`✅ Done: ${feedConfig.name} | inserted=${res.inserted} skipped=${res.skipped}`);
+    } catch (err) {
+      console.log(`⚠️ Failed feed: ${feedConfig.name} | ${err.message}`);
+    }
+  }
+
+  return { inserted, skipped, feeds: FEEDS.length };
+}
+
+/**
+ * ✅ BACKWARD COMPAT: your old function still works
+ * (only BBC World)
+ */
+export async function ingestBBCWorldRSS(pool) {
+  const BBC_WORLD_RSS = "http://feeds.bbci.co.uk/news/world/rss.xml";
+  return ingestOneFeed(pool, { name: "BBC World", url: BBC_WORLD_RSS });
 }
