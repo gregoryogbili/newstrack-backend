@@ -217,6 +217,37 @@ app.get("/posts", async (req, res) => {
 });
 
 /* ===========================
+   GET SINGLE POST + TRACK VIEW
+=========================== */
+
+app.get("/posts/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // increment views
+    await pool.query(
+      "UPDATE posts SET views = views + 1 WHERE id=$1",
+      [id]
+    );
+
+    const result = await pool.query(
+      `
+      SELECT p.*, u.name AS author_name
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.id
+      WHERE p.id = $1
+      `,
+      [id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Single post error:", err);
+    res.status(500).json({ error: "Failed to fetch post" });
+  }
+});
+
+/* ===========================
    ✅ FEED (PUBLIC)
    - We don’t rely on DB statuses like 'breaking/background' (not in your schema).
    - We compute a "bucket" in SQL:
