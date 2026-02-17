@@ -224,7 +224,6 @@ app.get("/posts/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // increment views
     await pool.query(
       "UPDATE posts SET views = views + 1 WHERE id=$1",
       [id]
@@ -248,12 +247,32 @@ app.get("/posts/:id", async (req, res) => {
 });
 
 /* ===========================
-   ✅ FEED (PUBLIC)
-   - We don’t rely on DB statuses like 'breaking/background' (not in your schema).
-   - We compute a "bucket" in SQL:
-       breaking   = last 2 hours AND score >= 55
-       published  = status = 'published'
-       background = everything else (new/queued/ignored older stuff)
+   TRENDING POSTS
+=========================== */
+
+app.get("/posts/trending", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *,
+      (
+        views * 3 +
+        EXTRACT(EPOCH FROM (NOW() - created_at)) * -0.00005
+      ) AS score
+      FROM posts
+      ORDER BY score DESC
+      LIMIT 6
+    `);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Trending error:", err);
+    res.status(500).json({ error: "Failed to fetch trending posts" });
+  }
+});
+
+/* ===========================
+   FEED
 =========================== */
 
 app.get("/feed", async (req, res) => {
@@ -290,92 +309,6 @@ app.get("/feed", async (req, res) => {
   } catch (err) {
     console.error("Feed error:", err.message);
     res.status(500).json({ error: "Feed failed" });
-  }
-});
-
-/* ===========================
-   CANDIDATES (AUTH)
-=========================== */
-
-app.get("/candidates", requireAuth, async (req, res) => {
-  const { status } = req.query;
-
-  let query = `SELECT * FROM candidates`;
-  const values = [];
-
-  if (status) {
-    query += ` WHERE status = $1`;
-    values.push(status);
-  }
-
-  query += ` ORDER BY discovered_at DESC`;
-
-  const result = await pool.query(query, values);
-  res.json(result.rows);
-});
-
-/* ===========================
-   RSS INGEST
-=========================== */
-
-app.post("/ingest/rss", async (req, res) => {
-  try {
-    const result = await ingestAllFeeds(pool);
-    res.json({
-      status: "ok",
-      inserted: result.inserted,
-      skipped: result.skipped
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "RSS ingestion failed" });
-  }
-});
-
-/* ===========================
-   🔥 PUBLISH QUEUED ARTICLES (AUTH)
-   NOTE: this is POST not GET, so "Cannot GET /publish" is expected.
-=========================== */
-
-app.post("/publish", requireAuth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT * FROM candidates
-      WHERE status = 'queued'
-      ORDER BY initial_score DESC
-      LIMIT 10
-    `);
-
-    let publishedCount = 0;
-
-    for (const candidate of result.rows) {
-      await pool.query(
-        `
-        INSERT INTO posts (headline, description, is_external)
-        VALUES ($1, $2, true)
-        `,
-        [candidate.headline, candidate.summary]
-      );
-
-      await pool.query(
-        `
-        UPDATE candidates
-        SET status = 'published'
-        WHERE id = $1
-        `,
-        [candidate.id]
-      );
-
-      publishedCount++;
-    }
-
-    res.json({
-      status: "ok",
-      published: publishedCount
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Publish failed" });
   }
 });
 
