@@ -217,6 +217,32 @@ app.get("/posts", async (req, res) => {
 });
 
 /* ===========================
+   TRENDING POSTS
+   (Moved ABOVE dynamic route)
+=========================== */
+
+app.get("/posts/trending", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *,
+      (
+        views * 3 +
+        EXTRACT(EPOCH FROM (NOW() - created_at)) * -0.00005
+      ) AS score
+      FROM posts
+      ORDER BY score DESC
+      LIMIT 6
+    `);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Trending error:", err);
+    res.status(500).json({ error: "Failed to fetch trending posts" });
+  }
+});
+
+/* ===========================
    GET SINGLE POST + TRACK VIEW
 =========================== */
 
@@ -243,31 +269,6 @@ app.get("/posts/:id", async (req, res) => {
   } catch (err) {
     console.error("Single post error:", err);
     res.status(500).json({ error: "Failed to fetch post" });
-  }
-});
-
-/* ===========================
-   TRENDING POSTS
-=========================== */
-
-app.get("/posts/trending", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT *,
-      (
-        views * 3 +
-        EXTRACT(EPOCH FROM (NOW() - created_at)) * -0.00005
-      ) AS score
-      FROM posts
-      ORDER BY score DESC
-      LIMIT 6
-    `);
-
-    res.json(result.rows);
-
-  } catch (err) {
-    console.error("Trending error:", err);
-    res.status(500).json({ error: "Failed to fetch trending posts" });
   }
 });
 
