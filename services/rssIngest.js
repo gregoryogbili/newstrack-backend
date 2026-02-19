@@ -62,38 +62,52 @@ const FEEDS = [
 function inferCategory(headline = "") {
   const text = headline.toLowerCase();
 
-  // ECONOMY (first priority)
-  if (/(inflation|economy|markets?|trade|oil|stocks?|bank|finance|business|gdp|interest rate|recession|earnings|profit)/.test(text)) {
+  // ==========================
+  // ECONOMY / BUSINESS
+  // ==========================
+  if (/(economy|economic|inflation|gdp|recession|stocks?|markets?|bank|finance|business|earnings|profit|oil prices?|trade|tariffs?|interest rates?)/.test(text)) {
     return "economy";
   }
 
-  // POLITICS
-  if (/(election|pm|president|minister|parliament|government|senate|policy)/.test(text)) {
-    return "politics";
-  }
-
-  // GEOPOLITICS
-  if (/(ukraine|russia|nato|israel|gaza|china|iran)/.test(text)) {
-    return "politics";
-  }
-
-  // LAW
-  if (/(court|trial|sentence|arrested|charged)/.test(text)) {
-    return "politics";
-  }
-
-  // DISASTER
-  if (/(storm|flood|earthquake|landslide|fire|wildfire)/.test(text)) {
-    return "world";
-  }
-
-  // TECHNOLOGY
-  if (/(tech|ai|data|cyber|software|startup)/.test(text)) {
+  // ==========================
+  // TECHNOLOGY / AI
+  // ==========================
+  if (/(ai|artificial intelligence|machine learning|cyber|software|data|tech|startup|semiconductor|chip|tesla|openai|google|microsoft|apple)/.test(text)) {
     return "technology";
   }
 
+  // ==========================
+  // DOMESTIC POLITICS
+  // ==========================
+  if (/(election|president|prime minister|pm|minister|senate|congress|parliament|government|policy|bill|lawmakers?)/.test(text)) {
+    return "politics";
+  }
+
+  // ==========================
+  // GEOPOLITICS / WAR
+  // ==========================
+  if (/(ukraine|russia|china|nato|israel|gaza|iran|middle east|taiwan|military|war|conflict)/.test(text)) {
+    return "world";
+  }
+
+  // ==========================
+  // LAW / CRIME
+  // ==========================
+  if (/(court|trial|arrest|charged|sentence|convicted|crime|fraud)/.test(text)) {
+    return "politics";
+  }
+
+  // ==========================
+  // DISASTERS
+  // ==========================
+  if (/(storm|flood|earthquake|wildfire|hurricane|typhoon|explosion|plane crash|landslide)/.test(text)) {
+    return "world";
+  }
+
+  // Default
   return "world";
 }
+
 
 
 /**
@@ -157,7 +171,7 @@ async function ingestOneFeed(pool, feedConfig) {
   let inserted = 0;
   let skipped = 0;
 
-  for (const item of feed.items.slice(0, 15)) {
+  for (const item of feed.items.slice(0, 25)) {
     const headline = item.title?.trim();
     const summary = item.contentSnippet || "";
     const sourceUrl = item.link;
