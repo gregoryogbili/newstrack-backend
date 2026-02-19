@@ -281,27 +281,10 @@ app.get("/posts/:id", async (req, res) => {
 app.get("/feed", async (req, res) => {
   try {
     const result = await pool.query(`
-      (
-        SELECT * FROM candidates
-        WHERE category = 'politics'
-        ORDER BY initial_score DESC, discovered_at DESC
-        LIMIT 8
-      )
-      UNION ALL
-      (
-        SELECT * FROM candidates
-        WHERE category = 'economy'
-        ORDER BY initial_score DESC, discovered_at DESC
-        LIMIT 8
-      )
-      UNION ALL
-      (
-        SELECT * FROM candidates
-        WHERE category NOT IN ('politics','economy')
-        ORDER BY initial_score DESC, discovered_at DESC
-        LIMIT 34
-      )
-      LIMIT 50
+      SELECT *
+      FROM candidates
+      ORDER BY initial_score DESC, discovered_at DESC
+      LIMIT 80;
     `);
 
     res.json(result.rows);
