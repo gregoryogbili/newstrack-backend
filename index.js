@@ -48,6 +48,8 @@ const ALLOWED_ORIGINS = [
   "https://newstrack-frontend.vercel.app",
   "http://localhost:3000",
   "http://localhost:3001",
+  "https://newstrac.org",
+  "https://www.newstrac.org",
   "http://localhost:3002"
 ];
 
