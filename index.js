@@ -279,39 +279,37 @@ app.get("/posts/:id", async (req, res) => {
 app.get("/feed", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT
-        id,
-        headline,
-        summary,
-        source_name,
-        source_url,
-        category,
-        status,
-        initial_score,
-        discovered_at,
-        CASE
-          WHEN discovered_at >= NOW() - INTERVAL '2 hours' AND initial_score >= 55 THEN 'breaking'
-          WHEN status = 'published' THEN 'published'
-          ELSE 'background'
-        END AS feed_bucket
-      FROM candidates
-      ORDER BY
-        CASE
-          WHEN (discovered_at >= NOW() - INTERVAL '2 hours' AND initial_score >= 55) THEN 1
-          WHEN status = 'published' THEN 2
-          ELSE 3
-        END,
-        initial_score DESC,
-        discovered_at DESC
+      (
+        SELECT * FROM candidates
+        WHERE category = 'politics'
+        ORDER BY initial_score DESC, discovered_at DESC
+        LIMIT 8
+      )
+      UNION ALL
+      (
+        SELECT * FROM candidates
+        WHERE category = 'economy'
+        ORDER BY initial_score DESC, discovered_at DESC
+        LIMIT 8
+      )
+      UNION ALL
+      (
+        SELECT * FROM candidates
+        WHERE category NOT IN ('politics','economy')
+        ORDER BY initial_score DESC, discovered_at DESC
+        LIMIT 34
+      )
       LIMIT 50
     `);
 
     res.json(result.rows);
+
   } catch (err) {
     console.error("Feed error:", err.message);
     res.status(500).json({ error: "Feed failed" });
   }
 });
+
 
 /* ===========================
    SERVER
