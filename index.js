@@ -295,6 +295,24 @@ app.get("/feed", async (req, res) => {
   }
 });
 
+/* ===========================
+   RSS INGEST ROUTE (MANUAL TRIGGER)
+=========================== */
+
+app.post("/ingest/rss", async (req, res) => {
+  try {
+    const result = await ingestAllFeeds(pool);
+    res.json({
+      status: "ok",
+      inserted: result.inserted,
+      skipped: result.skipped,
+      feedsProcessed: result.feeds
+    });
+  } catch (err) {
+    console.error("RSS ingest failed:", err);
+    res.status(500).json({ error: "RSS ingest failed" });
+  }
+});
 
 /* ===========================
    SERVER

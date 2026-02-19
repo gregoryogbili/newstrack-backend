@@ -62,15 +62,39 @@ const FEEDS = [
 function inferCategory(headline = "") {
   const text = headline.toLowerCase();
 
-  if (/(ukraine|russia|nato|israel|gaza)/.test(text)) return "geopolitics";
-  if (/(election|pm|president|minister)/.test(text)) return "politics";
-  if (/(court|trial|sentence|arrested)/.test(text)) return "law";
-  if (/(storm|flood|earthquake|landslide|fire)/.test(text)) return "disaster";
-  if (/(tech|ai|data|cyber)/.test(text)) return "technology";
-  if (/(inflation|economy|markets|trade)/.test(text)) return "economy";
+  // ECONOMY (first priority)
+  if (/(inflation|economy|markets?|trade|oil|stocks?|bank|finance|business|gdp|interest rate|recession|earnings|profit)/.test(text)) {
+    return "economy";
+  }
+
+  // POLITICS
+  if (/(election|pm|president|minister|parliament|government|senate|policy)/.test(text)) {
+    return "politics";
+  }
+
+  // GEOPOLITICS
+  if (/(ukraine|russia|nato|israel|gaza|china|iran)/.test(text)) {
+    return "politics";
+  }
+
+  // LAW
+  if (/(court|trial|sentence|arrested|charged)/.test(text)) {
+    return "politics";
+  }
+
+  // DISASTER
+  if (/(storm|flood|earthquake|landslide|fire|wildfire)/.test(text)) {
+    return "world";
+  }
+
+  // TECHNOLOGY
+  if (/(tech|ai|data|cyber|software|startup)/.test(text)) {
+    return "technology";
+  }
 
   return "world";
 }
+
 
 /**
  * Time-based breaking boost
