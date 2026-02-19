@@ -284,7 +284,7 @@ app.get("/feed", async (req, res) => {
       SELECT *
       FROM candidates
       ORDER BY initial_score DESC, discovered_at DESC
-      LIMIT 80;
+      LIMIT 120;
     `);
 
     res.json(result.rows);
