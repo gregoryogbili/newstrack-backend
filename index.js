@@ -283,11 +283,26 @@ app.get("/feed", async (req, res) => {
     const result = await pool.query(`
       SELECT *
       FROM candidates
+      WHERE status != 'ignored'
       ORDER BY initial_score DESC, discovered_at DESC
-      LIMIT 120;
+      LIMIT 150;
     `);
 
-    res.json(result.rows);
+    const rows = result.rows;
+
+    // Separate Reddit and others
+    const reddit = rows.filter(r => r.source_name.includes("Reddit"));
+    const others = rows.filter(r => !r.source_name.includes("Reddit"));
+
+    // Limit Reddit to max 5
+    const selectedReddit = reddit.slice(0, 5);
+
+    // Fill rest with non-Reddit
+    const selectedOthers = others.slice(0, 95);
+
+    const balanced = [...selectedOthers, ...selectedReddit];
+
+    res.json(balanced);
 
   } catch (err) {
     console.error("Feed error:", err.message);
