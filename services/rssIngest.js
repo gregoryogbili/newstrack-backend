@@ -3,7 +3,13 @@ import crypto from "crypto";
 
 console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 
-const parser = new Parser();
+const parser = new Parser({
+  requestOptions: {
+    headers: {
+      "User-Agent": "NewsTracBot/1.0 (+https://newstrac.org)"
+    }
+  }
+});
 
 /* ===========================
    ROBUST FEED SET (~25)
