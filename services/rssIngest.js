@@ -88,10 +88,10 @@ function inferCategory(headline = "", summary = "", source = "") {
   }
 
   // ==========================
-  // TECHNOLOGY / AI
+  // TECHNOLOGY
   // ==========================
-  if (/(ai|artificial intelligence|machine learning|cyber|software|data|tech|startup|semiconductor|chip|tesla|openai|google|microsoft|apple)/.test(text)) {
-    return "technology";
+  if (/(tech|technology|ai|artificial intelligence|robot|software|hardware|chip|cyber|hacker|data breach|google|microsoft|apple|meta|tesla)/.test(text)) {
+  return "technology";
   }
 
   // ==========================
@@ -221,10 +221,15 @@ async function ingestOneFeed(pool, feedConfig) {
       status = "ignored";
     }
 
+    const normalizedTitle = headline
+     .toLowerCase()
+     .replace(/[^a-z0-9]/g, "")
+     .trim();
+
     const contentHash = crypto
-      .createHash("sha256")
-      .update(headline + sourceUrl)
-      .digest("hex");
+     .createHash("sha256")
+     .update(normalizedTitle)
+     .digest("hex");
 
     try {
       const result = await pool.query(
