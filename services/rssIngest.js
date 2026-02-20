@@ -53,7 +53,12 @@ const FEEDS = [
 
   // Science / Space (NASA)
   { name: "NASA Recently Published", url: "https://www.nasa.gov/feed/" },
-  { name: "NASA News Releases", url: "https://www.nasa.gov/news-release/feed/" }
+  { name: "NASA News Releases", url: "https://www.nasa.gov/news-release/feed/" },
+
+    // Reddit (signal layer)
+  { name: "Reddit WorldNews", url: "https://www.reddit.com/r/worldnews/.rss" },
+  { name: "Reddit Economics", url: "https://www.reddit.com/r/economics/.rss" },
+  { name: "Reddit Technology", url: "https://www.reddit.com/r/technology/.rss" }
 ];
 
 /**
