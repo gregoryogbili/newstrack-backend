@@ -296,6 +296,26 @@ app.get("/feed", async (req, res) => {
 });
 
 /* ===========================
+   DEBUG REDDIT
+=========================== */
+app.get("/debug/reddit", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT source_name, headline, status, initial_score, discovered_at
+      FROM candidates
+      WHERE source_name ILIKE '%Reddit%'
+      ORDER BY discovered_at DESC
+      LIMIT 20;
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Reddit debug error:", err);
+    res.status(500).json({ error: "Debug failed" });
+  }
+});
+
+/* ===========================
    RSS INGEST ROUTE (MANUAL TRIGGER)
 =========================== */
 
