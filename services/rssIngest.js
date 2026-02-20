@@ -147,6 +147,11 @@ function computeInitialScore(headline = "", category = "", pubDate = null) {
   const text = headline.toLowerCase();
   let score = 0;
 
+  // Reddit baseline boost
+  if (category === "technology" || category === "economy") {
+    score += 15;
+  }
+
   // Violence / urgency
   if (/(kill|killed|dies|dead|attack|explosion|arrest)/.test(text)) {
     score += 30;
