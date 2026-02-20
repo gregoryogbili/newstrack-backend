@@ -70,8 +70,8 @@ const FEEDS = [
 /**
  * Infer a coarse category from headline text
  */
-function inferCategory(headline = "") {
-  const text = headline.toLowerCase();
+function inferCategory(headline = "", summary = "", source = "") {
+  const text = (headline + " " + summary + " " + source).toLowerCase();
 
   // ==========================
   // ECONOMY / BUSINESS
@@ -198,7 +198,7 @@ async function ingestOneFeed(pool, feedConfig) {
       continue;
     }
 
-    const category = inferCategory(headline);
+    const category = inferCategory(headline, summary, feedConfig.name);
     const initialScore = computeInitialScore(headline, category, pubDate);
 
     // 🔥 STATUS TIERS
