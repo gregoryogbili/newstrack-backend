@@ -28,8 +28,7 @@ const FEEDS = [
 
   // DW
   { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top" },
-  { name: "DW World", url: "https://rss.dw.com/rdf/rss-en-world" },
-
+  
   // Middle East / International
   { name: "Al Jazeera (All)", url: "https://www.aljazeera.com/xml/rss/all.xml" },
 
