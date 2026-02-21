@@ -7,7 +7,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { ingestAllFeeds } from "./services/rssIngest.js";
+import { ingestAllFeeds, ingestAllSignals } from "./services/rssIngest.js";
 
 dotenv.config();
 const { Pool } = pkg;
@@ -300,6 +300,28 @@ app.get("/feed", async (req, res) => {
 });
 
 /* ===========================
+   SIGNALS FEED
+=========================== */
+
+app.get("/signals", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM signals
+      WHERE published_at > NOW() - INTERVAL '12 hours'
+      ORDER BY published_at DESC
+      LIMIT 100
+    `);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Signals error:", err.message);
+    res.status(500).json({ error: "Signals failed" });
+  }
+});
+
+/* ===========================
    DEBUG REDDIT
 =========================== */
 app.get("/debug/reddit", async (req, res) => {
@@ -344,13 +366,24 @@ app.get("/debug/bbc", async (req, res) => {
 
 app.post("/ingest/rss", async (req, res) => {
   try {
-    const result = await ingestAllFeeds(pool);
+    // 1️⃣ Journalism pipeline
+    const newsResult = await ingestAllFeeds(pool);
+
+    // 2️⃣ Signal pipeline (Reddit → signals table)
+    const signalResult = await ingestAllSignals(pool);
+
     res.json({
       status: "ok",
-      inserted: result.inserted,
-      skipped: result.skipped,
-      feedsProcessed: result.feeds,
+      news: {
+        inserted: newsResult.inserted,
+        skipped: newsResult.skipped,
+        feedsProcessed: newsResult.feeds,
+      },
+      signals: {
+        inserted: signalResult.inserted,
+      }
     });
+
   } catch (err) {
     console.error("RSS ingest failed:", err);
     res.status(500).json({ error: "RSS ingest failed" });
