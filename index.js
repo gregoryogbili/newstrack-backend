@@ -27,8 +27,8 @@ const port = process.env.PORT || 3000;
 
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-  })
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
 );
 
 app.use(
@@ -36,8 +36,8 @@ app.use(
     windowMs: 15 * 60 * 1000,
     max: 300,
     standardHeaders: true,
-    legacyHeaders: false
-  })
+    legacyHeaders: false,
+  }),
 );
 
 /* ===========================
@@ -50,7 +50,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3001",
   "https://newstrac.org",
   "https://www.newstrac.org",
-  "http://localhost:3002"
+  "http://localhost:3002",
 ];
 
 app.use(
@@ -59,8 +59,8 @@ app.use(
       if (!origin) return cb(null, true);
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       return cb(new Error("CORS blocked: " + origin));
-    }
-  })
+    },
+  }),
 );
 
 app.use((err, req, res, next) => {
@@ -78,7 +78,7 @@ app.use(express.json());
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
 });
 
 /* ===========================
@@ -109,7 +109,7 @@ app.get("/", async (req, res) => {
     res.json({
       status: "ok",
       service: "newstrack-backend",
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch {
     res.status(500).json({ status: "error" });
@@ -141,7 +141,7 @@ app.post("/auth/register", async (req, res) => {
       `INSERT INTO users (name, email, password_hash, role)
        VALUES ($1,$2,$3,'journalist')
        RETURNING id,name,email,role,created_at`,
-      [name.trim(), email.trim().toLowerCase(), password_hash]
+      [name.trim(), email.trim().toLowerCase(), password_hash],
     );
     res.status(201).json({ user: result.rows[0] });
   } catch {
@@ -153,10 +153,9 @@ app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const result = await pool.query(
-      `SELECT * FROM users WHERE email=$1`,
-      [email.trim().toLowerCase()]
-    );
+    const result = await pool.query(`SELECT * FROM users WHERE email=$1`, [
+      email.trim().toLowerCase(),
+    ]);
 
     const user = result.rows[0];
 
@@ -167,7 +166,7 @@ app.post("/auth/login", async (req, res) => {
     const token = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res.json({
@@ -176,10 +175,9 @@ app.post("/auth/login", async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
-
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Login failed" });
@@ -190,19 +188,22 @@ app.post("/auth/login", async (req, res) => {
    CLEANUP JOB
 =========================== */
 
-setInterval(async () => {
-  try {
-    const result = await pool.query(`
+setInterval(
+  async () => {
+    try {
+      const result = await pool.query(`
       DELETE FROM candidates
       WHERE status = 'ignored'
       AND discovered_at < NOW() - INTERVAL '3 days'
     `);
 
-    console.log(`🧹 Cleanup removed ${result.rowCount} old ignored rows`);
-  } catch (err) {
-    console.error("Cleanup error:", err);
-  }
-}, 60 * 60 * 1000);
+      console.log(`🧹 Cleanup removed ${result.rowCount} old ignored rows`);
+    } catch (err) {
+      console.error("Cleanup error:", err);
+    }
+  },
+  60 * 60 * 1000,
+);
 
 /* ===========================
    POSTS
@@ -237,7 +238,6 @@ app.get("/posts/trending", async (req, res) => {
     `);
 
     res.json(result.rows);
-
   } catch (err) {
     console.error("Trending error:", err);
     res.status(500).json({ error: "Failed to fetch trending posts" });
@@ -252,10 +252,7 @@ app.get("/posts/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    await pool.query(
-      "UPDATE posts SET views = views + 1 WHERE id=$1",
-      [id]
-    );
+    await pool.query("UPDATE posts SET views = views + 1 WHERE id=$1", [id]);
 
     const result = await pool.query(
       `
@@ -264,7 +261,7 @@ app.get("/posts/:id", async (req, res) => {
       LEFT JOIN users u ON p.author_id = u.id
       WHERE p.id = $1
       `,
-      [id]
+      [id],
     );
 
     res.json(result.rows[0]);
@@ -288,21 +285,13 @@ app.get("/feed", async (req, res) => {
       LIMIT 150;
     `);
 
-    const rows = result.rows;
+    const rows = result.rows || [];
 
-    // Separate Reddit and others
-    const reddit = rows.filter(r => r.source_name.includes("Reddit"));
-    const others = rows.filter(r => !r.source_name.includes("Reddit"));
+    // OPTIONAL: hide Reddit from homepage feed (cleaner / more professional)
+    const filtered = rows.filter(r => !String(r.source_name || "").includes("Reddit"));
 
-    // Limit Reddit to max 5
-    const selectedReddit = reddit.slice(0, 5);
-
-    // Fill rest with non-Reddit
-    const selectedOthers = others.slice(0, 95);
-
-    const balanced = [...selectedOthers, ...selectedReddit];
-
-    res.json(balanced);
+    // return first 100 items
+    res.json(filtered.slice(0, 100));
 
   } catch (err) {
     console.error("Feed error:", err.message);
@@ -360,7 +349,7 @@ app.post("/ingest/rss", async (req, res) => {
       status: "ok",
       inserted: result.inserted,
       skipped: result.skipped,
-      feedsProcessed: result.feeds
+      feedsProcessed: result.feeds,
     });
   } catch (err) {
     console.error("RSS ingest failed:", err);
