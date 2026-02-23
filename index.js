@@ -460,62 +460,41 @@ function misinfoHeuristic(cluster) {
   return { score, flags };
 }
 
-function makeClusterKey(headline = "") {
-  const stop = new Set([
-    "the",
-    "a",
-    "an",
-    "to",
-    "of",
-    "in",
-    "on",
-    "for",
-    "with",
-    "and",
-    "or",
-    "at",
-    "by",
-    "from",
-    "after",
-    "before",
-    "as",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "will",
-    "would",
-    "can",
-    "could",
-    "should",
-    "may",
-    "might",
-    "says",
-    "say",
-    "said",
-    "new",
-    "live",
-    "latest",
-    "update",
-  ]);
+function makeClusterKey(headline) {
+  if (!headline) return null;
 
-  const cleaned = headline
+  const text = headline
     .toLowerCase()
-    .replace(/&amp;/g, "and")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const deduped = cleaned.replace(/^(.+)\1$/, "$1");
-
-  const tokens = deduped
+    .replace(/[^a-z0-9\s]/g, "")
     .split(" ")
-    .filter((t) => t.length >= 3 && !stop.has(t));
+    .filter(
+      (word) =>
+        word.length > 3 &&
+        ![
+          "with",
+          "from",
+          "that",
+          "this",
+          "have",
+          "will",
+          "about",
+          "after",
+          "over",
+          "into",
+          "under",
+          "against",
+          "amid",
+          "says",
+          "say",
+          "said",
+          "report",
+          "reports",
+          "update",
+        ].includes(word),
+    );
 
-  return tokens.slice(0, 6).join(" ");
+  // take top 5 strongest words
+  return text.slice(0, 5).sort().join("-");
 }
 
 function tokenSetForHeadline(headline = "") {
@@ -662,7 +641,45 @@ app.get("/clusters", async (req, res) => {
       }
     }
 
-    const formatted = Object.entries(clusters)
+    function mergeSimilarClusters(clusterMap) {
+      const keys = Object.keys(clusterMap);
+      const merged = {};
+
+      for (let i = 0; i < keys.length; i++) {
+        let baseKey = keys[i];
+
+        if (!clusterMap[baseKey]) continue;
+
+        merged[baseKey] = clusterMap[baseKey];
+
+        for (let j = i + 1; j < keys.length; j++) {
+          const compareKey = keys[j];
+          if (!clusterMap[compareKey]) continue;
+
+          const baseTokens = baseKey.split("-");
+          const compareTokens = compareKey.split("-");
+
+          const overlap = baseTokens.filter((t) =>
+            compareTokens.includes(t),
+          ).length;
+
+          if (overlap >= 2) {
+            // merge clusters
+            merged[baseKey].articles += clusterMap[compareKey].articles;
+            merged[baseKey].recent += clusterMap[compareKey].recent;
+            merged[baseKey].previous += clusterMap[compareKey].previous;
+
+            clusterMap[compareKey] = null;
+          }
+        }
+      }
+
+      return merged;
+    }
+
+    const mergedClusters = mergeSimilarClusters(clusters);
+
+    const formatted = Object.entries(mergedClusters)
       .map(([key, value]) => {
         const velocity = value.recent;
         const baseline = value.previous || 1; // prevent divide by zero
@@ -904,7 +921,7 @@ app.get("/signals/overview", async (req, res) => {
       SELECT headline, published_at
       FROM candidates
       WHERE status != 'ignored'
-      AND published_at > NOW() - INTERVAL '12 hours'
+      AND published_at > NOW() - INTERVAL '3 days'
     `);
 
     const rows = result.rows;
@@ -919,7 +936,7 @@ app.get("/signals/overview", async (req, res) => {
         makeClusterKey(row.headline) || row.headline.toLowerCase().slice(0, 60);
 
       // Simple geo detection
-      const text = row.headline.toLowerCase();
+      const text = (row.headline + " " + (row.summary || "")).toLowerCase();
 
       const places = [
         // North America
@@ -1048,10 +1065,124 @@ app.get("/signals/overview", async (req, res) => {
     riskScore = Math.round(Math.max(0, Math.min(100, riskScore)));
 
     // Sort regions by frequency
+    const REGION_COORDS = {
+      "United States": { lat: 37.0902, lng: -95.7129 },
+      USA: { lat: 37.0902, lng: -95.7129 },
+      Canada: { lat: 56.1304, lng: -106.3468 },
+      Mexico: { lat: 23.6345, lng: -102.5528 },
+
+      UK: { lat: 55.3781, lng: -3.436 },
+      England: { lat: 52.3555, lng: -1.1743 },
+      France: { lat: 46.2276, lng: 2.2137 },
+      Germany: { lat: 51.1657, lng: 10.4515 },
+      Italy: { lat: 41.8719, lng: 12.5674 },
+      Spain: { lat: 40.4637, lng: -3.7492 },
+      Ukraine: { lat: 48.3794, lng: 31.1656 },
+      Russia: { lat: 61.524, lng: 105.3188 },
+
+      Israel: { lat: 31.0461, lng: 34.8516 },
+      Iran: { lat: 32.4279, lng: 53.688 },
+      Saudi: { lat: 23.8859, lng: 45.0792 },
+      "Middle East": { lat: 25, lng: 45 },
+
+      China: { lat: 35.8617, lng: 104.1954 },
+      Taiwan: { lat: 23.6978, lng: 120.9605 },
+      India: { lat: 20.5937, lng: 78.9629 },
+      Pakistan: { lat: 30.3753, lng: 69.3451 },
+      Japan: { lat: 36.2048, lng: 138.2529 },
+
+      Nigeria: { lat: 9.082, lng: 8.6753 },
+      Kenya: { lat: -0.0236, lng: 37.9062 },
+      Ghana: { lat: 7.9465, lng: -1.0232 },
+      "South Africa": { lat: -30.5595, lng: 22.9375 },
+      Egypt: { lat: 26.8206, lng: 30.8025 },
+
+      Greenland: { lat: 71.7069, lng: -42.6043 },
+      Denmark: { lat: 56.2639, lng: 9.5018 },
+    };
+
     const regionalSpread = Object.entries(regionCounts)
-      .map(([region, count]) => ({ region, count }))
+      .map(([region, count]) => {
+        const coords = REGION_COORDS[region];
+        if (!coords) return null;
+
+        return {
+          region,
+          count,
+          lat: coords.lat,
+          lng: coords.lng,
+        };
+      })
+      .filter(Boolean)
       .sort((a, b) => b.count - a.count)
-      .slice(0, 6);
+      .slice(0, 8);
+
+    // Multi-Lens Geopolitical Pressure
+
+    const geopoliticalPressure = regionalSpread
+      .map((r) => {
+        const baseVolume = r.count;
+
+        // Neutral / Analytical
+        const narrativePressure = Math.round(
+          baseVolume * 0.6 + velocityIndex * 0.2,
+        );
+
+        // Risk Focused (acceleration weighted)
+        const riskPressure = Math.round(
+          baseVolume * 0.5 + acceleratingCount * 3,
+        );
+
+        // Strategic Intelligence (divergence weighted)
+        const strategicPressure = Math.round(
+          baseVolume * 0.5 + (strongClusters[0]?.divergenceScore || 0) * 0.3,
+        );
+
+        // Financial Market Oriented (economic weighted)
+        const marketPressure = Math.round(baseVolume * 0.4 + riskScore * 2);
+
+        return {
+          region: r.region,
+          narrativePressure,
+          riskPressure,
+          strategicPressure,
+          marketPressure,
+        };
+      })
+      .sort((a, b) => b.narrativePressure - a.narrativePressure);
+
+    function generateNarrativeSummary(regions, velocityIndex) {
+      if (!regions || regions.length === 0) {
+        return "No significant regional narrative concentration detected.";
+      }
+
+      const top = regions[0];
+      const second = regions[1];
+
+      let sentence = `Current narrative pressure is concentrated in ${top.region}`;
+
+      if (second) {
+        sentence += `, with secondary activity observed in ${second.region}`;
+      }
+
+      sentence += `. `;
+
+      if (velocityIndex >= 50) {
+        sentence += "Signal acceleration suggests escalating developments.";
+      } else if (velocityIndex >= 20) {
+        sentence +=
+          "Narratives are building steadily across monitored regions.";
+      } else {
+        sentence += "Overall signal velocity remains contained.";
+      }
+
+      return sentence;
+    }
+
+    const narrativeSummary = generateNarrativeSummary(
+      geopoliticalPressure,
+      velocityIndex,
+    );
 
     res.json({
       velocityIndex,
@@ -1059,6 +1190,8 @@ app.get("/signals/overview", async (req, res) => {
       clusterCount: strongClusters.length,
       economicRisk: riskScore,
       regionalSpread,
+      geopoliticalPressure,
+      narrativeSummary,
     });
   } catch (err) {
     console.error("Signals overview error:", err);
@@ -1152,6 +1285,189 @@ app.post("/ingest/rss", async (req, res) => {
   } catch (err) {
     console.error("RSS ingest failed:", err);
     res.status(500).json({ error: "RSS ingest failed" });
+  }
+});
+
+/* ===========================
+   REGION INTELLIGENCE DETAIL (24H)
+=========================== */
+
+function categoryWeight(cat = "") {
+  const c = String(cat).toLowerCase();
+
+  if (c.includes("geopolit") || c.includes("politic")) return 1.4;
+  if (c.includes("econom")) return 1.3;
+  if (c.includes("war") || c.includes("conflict") || c.includes("security"))
+    return 1.6;
+  if (c.includes("tech") || c.includes("cyber")) return 1.2;
+
+  return 1.0;
+}
+
+const ECON_TRIGGERS = [
+  "inflation",
+  "interest rate",
+  "rates",
+  "bond",
+  "yield",
+  "oil",
+  "gas",
+  "brent",
+  "wti",
+  "opec",
+  "sanction",
+  "tariff",
+  "currency",
+  "devalue",
+  "recession",
+  "default",
+  "bank",
+  "banking",
+  "stock",
+  "market",
+  "dow",
+  "nasdaq",
+  "ftse",
+];
+
+app.get("/signals/region/:region", async (req, res) => {
+  try {
+    const regionName = req.params.region.toLowerCase();
+
+    const result = await pool.query(`
+      SELECT headline, summary, source_name, published_at, category
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '24 hours'
+    `);
+
+    const rows = result.rows;
+
+    const regionArticles = rows.filter((r) =>
+      (r.headline + " " + (r.summary || "")).toLowerCase().includes(regionName),
+    );
+
+    const articleCount = regionArticles.length;
+
+    let economicHits = 0;
+
+    for (const r of regionArticles) {
+      const text = (r.headline + " " + (r.summary || "")).toLowerCase();
+
+      if (ECON_TRIGGERS.some((k) => text.includes(k))) {
+        economicHits += 1;
+      }
+    }
+
+    const economicTriggerLevel =
+      economicHits >= 15
+        ? "HIGH"
+        : economicHits >= 6
+          ? "ELEVATED"
+          : economicHits >= 2
+            ? "LOW"
+            : "NONE";
+
+    // Cluster logic reuse
+    const clusters = {};
+    const now = new Date();
+    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
+    for (const row of regionArticles) {
+      const key =
+        makeClusterKey(row.headline) || row.headline.toLowerCase().slice(0, 60);
+
+      if (!clusters[key]) {
+        clusters[key] = {
+          articles: 0,
+          recent: 0,
+          previous: 0,
+          sources: new Set(),
+        };
+      }
+
+      clusters[key].articles += 1;
+      clusters[key].sources.add(row.source_name);
+
+      const published = new Date(row.published_at);
+
+      if (published > sixHoursAgo) {
+        clusters[key].recent += 1;
+      } else {
+        clusters[key].previous += 1;
+      }
+    }
+
+    const clusterList = Object.values(clusters);
+
+    const clusterCount = clusterList.length;
+
+    const acceleratingClusters = clusterList.filter((c) => {
+      const baseline = c.previous || 1;
+      const ratio = c.recent / baseline;
+      return c.recent >= 2 && ratio >= 2;
+    }).length;
+
+    const averageSourceDiversity =
+      clusterList.length > 0
+        ? Math.round(
+            clusterList.reduce((sum, c) => sum + c.sources.size, 0) /
+              clusterList.length,
+          )
+        : 0;
+
+    // Hourly trend data (24 hours)
+    const hourlyTrend = [];
+
+    for (let i = 23; i >= 0; i--) {
+      const start = new Date(now.getTime() - i * 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+      let count = 0;
+
+      for (const r of regionArticles) {
+        const published = new Date(r.published_at);
+        if (published >= start && published < end) {
+          count += categoryWeight(r.category);
+        }
+      }
+
+      count = Math.round(count);
+
+      hourlyTrend.push({
+        hour: start.getHours(),
+        count,
+      });
+    }
+
+    // Volatility Score (0–100)
+    const counts = hourlyTrend.map((h) => h.count || 0);
+    const avg = counts.reduce((a, b) => a + b, 0) / (counts.length || 1);
+    const max = Math.max(0, ...counts);
+
+    let volatilityScore = 0;
+
+    if (avg > 0) {
+      const spikeRatio = max / avg;
+      volatilityScore = Math.round(
+        Math.min(100, Math.max(0, (spikeRatio - 1) * 35)),
+      );
+    }
+
+    res.json({
+      region: req.params.region,
+      articleCount,
+      clusterCount,
+      acceleratingClusters,
+      averageSourceDiversity,
+      hourlyTrend,
+      volatilityScore,
+      economicHits,
+      economicTriggerLevel,
+    });
+  } catch (err) {
+    console.error("Region detail error:", err);
+    res.status(500).json({ error: "Region detail failed" });
   }
 });
 
