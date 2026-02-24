@@ -419,6 +419,107 @@ function extractGeo(title, articles) {
   };
 }
 
+function normalizeRegionFromText(headline = "", summary = "") {
+  const text = (headline + " " + (summary || "")).toLowerCase();
+
+  // Canonical buckets (simple prototype)
+  const RULES = [
+    {
+      region: "Middle East",
+      keys: [
+        "israel",
+        "iran",
+        "gaza",
+        "saudi",
+        "yemen",
+        "lebanon",
+        "syria",
+        "iraq",
+        "qatar",
+        "uae",
+        "middle east",
+      ],
+    },
+    {
+      region: "Europe",
+      keys: [
+        "uk",
+        "england",
+        "france",
+        "germany",
+        "italy",
+        "spain",
+        "europe",
+        "eu",
+        "poland",
+        "sweden",
+        "norway",
+        "ukraine",
+        "russia",
+      ],
+    },
+    {
+      region: "North America",
+      keys: [
+        "united states",
+        "usa",
+        "canada",
+        "mexico",
+        "washington",
+        "new york",
+        "california",
+      ],
+    },
+    {
+      region: "Asia",
+      keys: [
+        "china",
+        "taiwan",
+        "japan",
+        "korea",
+        "india",
+        "pakistan",
+        "philippines",
+        "indonesia",
+        "thailand",
+        "asia",
+      ],
+    },
+    {
+      region: "Africa",
+      keys: [
+        "africa",
+        "nigeria",
+        "ghana",
+        "kenya",
+        "ethiopia",
+        "egypt",
+        "south africa",
+        "sudan",
+      ],
+    },
+    {
+      region: "Latin America",
+      keys: [
+        "brazil",
+        "argentina",
+        "chile",
+        "colombia",
+        "peru",
+        "mexico",
+        "latin america",
+      ],
+    },
+    { region: "Oceania", keys: ["australia", "new zealand", "oceania"] },
+  ];
+
+  for (const rule of RULES) {
+    if (rule.keys.some((k) => text.includes(k))) return rule.region;
+  }
+
+  return "Other";
+}
+
 function misinfoHeuristic(cluster) {
   const flags = [];
   const sources = new Set(cluster.articles.map((a) => a.source)).size;
@@ -1477,6 +1578,102 @@ app.get("/signals/region/:region", async (req, res) => {
 
 app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
+});
+
+app.get("/regions", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, headline, summary, source_name, source_url, published_at, initial_score
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '36 hours'
+      ORDER BY initial_score DESC, discovered_at DESC
+      LIMIT 250;
+    `);
+
+    const rows = result.rows || [];
+
+    // Build region -> clusters
+    const regionMap = {};
+
+    for (const r of rows) {
+      const region = normalizeRegionFromText(r.headline, r.summary);
+
+      if (!regionMap[region]) regionMap[region] = {};
+
+      // cluster key (reuse your existing clustering signature)
+      const key =
+        makeClusterKey(r.headline) || r.headline.toLowerCase().slice(0, 60);
+
+      const slug = key.replace(/[^a-z0-9]+/g, "-");
+
+      if (!regionMap[region][slug]) {
+        regionMap[region][slug] = {
+          slug,
+          title: r.headline,
+          articles: [],
+          totalScore: 0,
+        };
+      }
+
+      regionMap[region][slug].articles.push({
+        id: r.id,
+        headline: r.headline,
+        summary: r.summary,
+        source_name: r.source_name,
+        source_url: r.source_url,
+        published_at: r.published_at,
+        score: r.initial_score,
+      });
+
+      regionMap[region][slug].totalScore += r.initial_score || 0;
+    }
+
+    // Format response
+    const regions = Object.entries(regionMap).map(([region, clustersObj]) => {
+      const clusters = Object.values(clustersObj)
+        .map((c) => {
+          // sort articles inside cluster by score desc, then time desc
+          c.articles.sort((a, b) => (b.score || 0) - (a.score || 0));
+          c.signalStrength = Math.round(
+            c.totalScore / (c.articles.length || 1),
+          );
+          return c;
+        })
+        .sort((a, b) => (b.signalStrength || 0) - (a.signalStrength || 0));
+
+      // simple momentum label (prototype)
+      const avgStrength =
+        clusters.reduce((s, c) => s + (c.signalStrength || 0), 0) /
+        (clusters.length || 1);
+
+      const momentum =
+        avgStrength >= 70 ? "Rising" : avgStrength >= 45 ? "Active" : "Calm";
+
+      const narrativeStructure =
+        clusters.length >= 10
+          ? "Fragmented"
+          : clusters.length >= 5
+            ? "Mixed"
+            : "Concentrated";
+
+      return {
+        region,
+        momentum,
+        narrativeStructure,
+        clusterCount: clusters.length,
+        clusters,
+      };
+    });
+
+    // Order regions by “importance”
+    regions.sort((a, b) => (b.clusterCount || 0) - (a.clusterCount || 0));
+
+    res.json(regions);
+  } catch (err) {
+    console.error("Regions error:", err);
+    res.status(500).json({ error: "Regions failed" });
+  }
 });
 
 /* ===========================
