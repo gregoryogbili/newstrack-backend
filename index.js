@@ -184,6 +184,24 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
+app.get("/auth/me", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, name, email, role, created_at FROM users WHERE id = $1",
+      [req.user.id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    console.error("Auth/me error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 /* ===========================
    CLEANUP JOB
 =========================== */
@@ -196,6 +214,11 @@ setInterval(
       WHERE status = 'ignored'
       AND discovered_at < NOW() - INTERVAL '3 days'
     `);
+
+      await pool.query(`
+        DELETE FROM candidates
+        WHERE published_at < NOW() - INTERVAL '5 days'
+      `);
 
       console.log(`🧹 Cleanup removed ${result.rowCount} old ignored rows`);
     } catch (err) {
@@ -217,6 +240,39 @@ app.get("/posts", async (req, res) => {
     ORDER BY p.created_at DESC
   `);
   res.json(result.rows);
+});
+
+/* ===========================
+   CREATE POST (Journalist)
+=========================== */
+
+app.post("/journalists/:id/posts", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { headline, content } = req.body;
+
+  if (!headline || !content) {
+    return res.status(400).json({ error: "Headline and content required" });
+  }
+
+  if (String(req.user.id) !== String(id)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO posts (headline, description, author_id, views, created_at)
+      VALUES ($1, $2, $3, 0, NOW())
+      RETURNING *
+      `,
+      [headline.trim(), content.trim(), id],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Create post error:", err);
+    res.status(500).json({ error: "Failed to create post" });
+  }
 });
 
 /* ===========================
@@ -281,7 +337,17 @@ app.get("/feed", async (req, res) => {
       SELECT *
       FROM candidates
       WHERE status != 'ignored'
-      ORDER BY initial_score DESC, discovered_at DESC
+      AND published_at IS NOT NULL
+      AND published_at > NOW() - INTERVAL '36 hours'
+      ORDER BY
+      (
+        initial_score * 0.7 +
+        GREATEST(
+          0,
+          24 - (EXTRACT(EPOCH FROM (NOW() - published_at)) / 3600.0)
+        )
+      )
+      DESC
       LIMIT 150;
     `);
 
@@ -295,8 +361,9 @@ app.get("/feed", async (req, res) => {
     // return first 100 items
     res.json(filtered.slice(0, 100));
   } catch (err) {
-    console.error("Feed error:", err.message);
-    res.status(500).json({ error: "Feed failed" });
+    console.error("Feed FULL error:");
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 });
 
