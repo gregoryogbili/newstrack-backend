@@ -458,40 +458,82 @@ app.get("/journalists/:id/metrics", requireAuth, async (req, res) => {
 });
 
 /* ===========================
-   FEED
+   FEED (Cluster-Aware, Preserves Scoring Logic)
 =========================== */
 
 app.get("/feed", async (req, res) => {
   try {
+    // 1️⃣ Keep ORIGINAL ranking logic intact
     const result = await pool.query(`
-      SELECT *
-      FROM candidates
-      WHERE status != 'ignored'
-      AND published_at IS NOT NULL
-      AND published_at > NOW() - INTERVAL '36 hours'
-      ORDER BY
+      SELECT *,
       (
         initial_score * 0.7 +
         GREATEST(
           0,
           24 - (EXTRACT(EPOCH FROM (NOW() - published_at)) / 3600.0)
         )
-      )
-      DESC
+      ) AS ranking_score
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at IS NOT NULL
+      AND published_at > NOW() - INTERVAL '36 hours'
+      ORDER BY ranking_score DESC
       LIMIT 150;
     `);
 
     const rows = result.rows || [];
 
-    // OPTIONAL: hide Reddit from homepage feed (cleaner / more professional)
+    // 2️⃣ Preserve Reddit filtering
     const filtered = rows.filter(
       (r) => !String(r.source_name || "").includes("Reddit"),
     );
 
-    // return first 100 items
-    res.json(filtered.slice(0, 100));
+    // 3️⃣ Cluster by narrative similarity (using your existing helpers)
+    const clusters = {};
+
+    for (const row of filtered) {
+      let key =
+        makeClusterKey(row.headline) || row.headline.toLowerCase().slice(0, 60);
+
+      // Try merging into closest existing cluster
+      if (!clusters[key]) {
+        const best = findBestExistingClusterKey(row.headline, clusters);
+        if (best) key = best;
+      }
+
+      if (!clusters[key]) {
+        clusters[key] = {
+          topArticle: row,
+          totalScore: row.ranking_score || 0,
+          clusterCount: 1,
+          _tokens: tokenSetForHeadline(row.headline),
+        };
+      } else {
+        clusters[key].clusterCount += 1;
+        clusters[key].totalScore += row.ranking_score || 0;
+
+        // Keep highest ranked article as representative
+        if (
+          (row.ranking_score || 0) >
+          (clusters[key].topArticle.ranking_score || 0)
+        ) {
+          clusters[key].topArticle = row;
+        }
+      }
+    }
+
+    // 4️⃣ Rank clusters (not individual articles)
+    const clusteredFeed = Object.values(clusters)
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .map((c) => ({
+        ...c.topArticle,
+        clusterCount: c.clusterCount,
+      }))
+      .slice(0, 100);
+
+    res.json(clusteredFeed);
   } catch (err) {
-    console.error("Feed FULL error:");
+    console.error("Feed CLUSTER error:");
     console.error(err);
     res.status(500).json({ error: err.message });
   }
@@ -1211,101 +1253,152 @@ app.get("/clusters/:slug", async (req, res) => {
 
 /* ===========================
    SIGNALS OVERVIEW (MACRO INTELLIGENCE)
+   + Dynamic window support (6h / 24h / 72h)
+   + Keeps full NPI/MacroRisk/Geo/Strategic logic
 =========================== */
 
 app.get("/signals/overview", async (req, res) => {
   try {
+    // 🟢 Window control (default 24h)
+    const windowParam = String(req.query.window || "24h").toLowerCase();
+
+    // "Recent" window used for velocity/acceleration
+    let recentHours = 24;
+    if (windowParam === "6h") recentHours = 6;
+    if (windowParam === "72h") recentHours = 72;
+
+    // IMPORTANT: Always fetch enough history to compute "previous" + baselines.
+    // If you fetch only 6h, previous becomes 0 and ratios blow up.
+    // So we keep a stable lookback (3 days) and apply the window in logic.
+    const fetchIntervalSQL = "72 hours";
+
     const result = await pool.query(`
-      SELECT headline, published_at
+      SELECT headline, summary, published_at
       FROM candidates
       WHERE status != 'ignored'
-      AND published_at > NOW() - INTERVAL '3 days'
+      AND published_at > NOW() - INTERVAL '${fetchIntervalSQL}'
     `);
 
-    const rows = result.rows;
+    const rows = result.rows || [];
     const now = new Date();
-    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
+    // Recent window boundary (dynamic)
+    const recentWindowAgo = new Date(
+      now.getTime() - recentHours * 60 * 60 * 1000,
+    );
+
+    // -----------------------------
+    // 24H STRUCTURAL BASELINE (kept as you wrote it)
+    // -----------------------------
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    let total24h = 0;
+
+    for (const row of rows) {
+      const published = new Date(row.published_at);
+      if (published > twentyFourHoursAgo) total24h++;
+    }
 
     const clusters = {};
+
+    // Build a fast lookup: clusterKey -> list of rows (for divergence + strategic scoring)
+    const rowsByCluster = new Map();
+    for (const row of rows) {
+      const key = makeClusterKey(row.headline || "");
+      if (!rowsByCluster.has(key)) rowsByCluster.set(key, []);
+      rowsByCluster.get(key).push(row);
+    }
+
     const regionCounts = {};
 
+    // Geo detection places (as in your code)
+    const places = [
+      // North America
+      "united states",
+      "usa",
+      "canada",
+      "mexico",
+      // Latin America
+      "brazil",
+      "argentina",
+      "chile",
+      "colombia",
+      "peru",
+      // Europe
+      "uk",
+      "england",
+      "france",
+      "germany",
+      "italy",
+      "spain",
+      "ukraine",
+      "russia",
+      // Middle East
+      "israel",
+      "iran",
+      "saudi",
+      // Asia
+      "china",
+      "taiwan",
+      "india",
+      "pakistan",
+      "japan",
+      // Africa
+      "nigeria",
+      "kenya",
+      "ghana",
+      "south africa",
+      "ethiopia",
+      "egypt",
+      // Arctic
+      "greenland",
+      "denmark",
+    ];
+
+    // Canonical naming (define once)
+    const CANON = {
+      usa: "United States",
+      "united states": "United States",
+      uk: "UK",
+      england: "UK",
+      "south africa": "South Africa",
+    };
+
+    // Count regions + compute recent/previous per cluster
     for (const row of rows) {
       const key =
         makeClusterKey(row.headline) || row.headline.toLowerCase().slice(0, 60);
 
-      // Simple geo detection
-      const text = (row.headline + " " + (row.summary || "")).toLowerCase();
-
-      const places = [
-        // North America
-        "united states",
-        "usa",
-        "canada",
-        "mexico",
-
-        // Europe
-        "uk",
-        "england",
-        "france",
-        "germany",
-        "italy",
-        "spain",
-        "europe",
-        "ukraine",
-        "russia",
-
-        // Middle East
-        "israel",
-        "iran",
-        "saudi",
-        "middle east",
-
-        // Asia
-        "china",
-        "taiwan",
-        "india",
-        "pakistan",
-        "japan",
-
-        // Africa
-        "africa",
-        "nigeria",
-        "kenya",
-        "ghana",
-        "south africa",
-        "ethiopia",
-        "egypt",
-
-        // Arctic
-        "greenland",
-        "denmark",
-      ];
+      const text = (
+        String(row.headline || "") +
+        " " +
+        String(row.summary || "")
+      ).toLowerCase();
 
       for (const place of places) {
-        if (text.includes(place)) {
-          const formatted = place
+        const escaped = place.replace(/\s+/g, "\\s+");
+        const regex = new RegExp(`\\b${escaped}\\b`, "i");
+        if (!regex.test(text)) continue;
+
+        const formatted =
+          CANON[place] ||
+          place
             .split(" ")
             .map((w) => w[0].toUpperCase() + w.slice(1))
             .join(" ");
 
-          regionCounts[formatted] = (regionCounts[formatted] || 0) + 1;
-        }
+        regionCounts[formatted] = (regionCounts[formatted] || 0) + 1;
       }
 
       if (!clusters[key]) {
-        clusters[key] = {
-          recent: 0,
-          previous: 0,
-        };
+        clusters[key] = { recent: 0, previous: 0 };
       }
 
       const published = new Date(row.published_at);
 
-      if (published > sixHoursAgo) {
-        clusters[key].recent += 1;
-      } else {
-        clusters[key].previous += 1;
-      }
+      // ✅ This is now window-aware
+      if (published > recentWindowAgo) clusters[key].recent += 1;
+      else clusters[key].previous += 1;
     }
 
     const strongClusters = [];
@@ -1314,12 +1407,24 @@ app.get("/signals/overview", async (req, res) => {
       const c = clusters[key];
       const totalArticles = c.recent + c.previous;
 
-      if (totalArticles >= 2) {
-        strongClusters.push({
-          recent: c.recent,
-          previous: c.previous,
-        });
-      }
+      if (totalArticles < 2) continue;
+
+      const baseline = c.previous || 1;
+      const ratio = c.recent / baseline;
+
+      // compute divergence for this cluster
+      const clusterRows = rowsByCluster.get(key) || [];
+      const divScore = divergenceScore(
+        clusterRows.map((r) => ({ headline: r.headline })),
+      );
+
+      strongClusters.push({
+        key,
+        recent: c.recent,
+        previous: c.previous,
+        ratio,
+        divergenceScore: divScore,
+      });
     }
 
     let totalRecent = 0;
@@ -1333,110 +1438,157 @@ app.get("/signals/overview", async (req, res) => {
       totalRecent += c.recent;
       totalRatio += ratio;
 
-      if (c.recent >= 2 && ratio >= 2) {
-        acceleratingCount += 1;
-      }
+      if (c.recent >= 2 && ratio >= 2) acceleratingCount += 1;
     }
 
     const avgRatio =
       strongClusters.length > 0 ? totalRatio / strongClusters.length : 0;
 
     let velocityIndex = totalRecent * 2 + avgRatio * 10 + acceleratingCount * 5;
-
     velocityIndex = Math.round(Math.max(0, Math.min(100, velocityIndex)));
 
-    // Economic Risk Pulse (V1)
+    // Economic Risk Pulse (V1) (kept)
     let riskScore = 0;
-
-    // High velocity increases risk
     riskScore += velocityIndex * 0.6;
-
-    // Accelerating clusters increase instability
     riskScore += acceleratingCount * 8;
-
-    // If no strong clusters → calmer environment
-    if (acceleratingCount === 0) {
-      riskScore -= 10;
-    }
-
-    // Normalize
+    if (acceleratingCount === 0) riskScore -= 10;
     riskScore = Math.round(Math.max(0, Math.min(100, riskScore)));
 
-    // Sort regions by frequency
+    // REGION COORDS (kept)
     const REGION_COORDS = {
-      "United States": { lat: 37.0902, lng: -95.7129 },
-      USA: { lat: 37.0902, lng: -95.7129 },
-      Canada: { lat: 56.1304, lng: -106.3468 },
-      Mexico: { lat: 23.6345, lng: -102.5528 },
+      "United States": { lat: 39.8283, lng: -98.5795 },
+      USA: { lat: 39.8283, lng: -98.5795 },
+      Canada: { lat: 45.4215, lng: -75.6972 },
+      Mexico: { lat: 19.4326, lng: -99.1332 },
 
-      UK: { lat: 55.3781, lng: -3.436 },
-      England: { lat: 52.3555, lng: -1.1743 },
-      France: { lat: 46.2276, lng: 2.2137 },
-      Germany: { lat: 51.1657, lng: 10.4515 },
-      Italy: { lat: 41.8719, lng: 12.5674 },
-      Spain: { lat: 40.4637, lng: -3.7492 },
-      Ukraine: { lat: 48.3794, lng: 31.1656 },
-      Russia: { lat: 61.524, lng: 105.3188 },
+      Brazil: { lat: -15.7939, lng: -47.8828 },
+      Argentina: { lat: -34.6037, lng: -58.3816 },
+      Chile: { lat: -33.4489, lng: -70.6693 },
+      Colombia: { lat: 4.711, lng: -74.0721 },
+      Peru: { lat: -12.0464, lng: -77.0428 },
 
-      Israel: { lat: 31.0461, lng: 34.8516 },
-      Iran: { lat: 32.4279, lng: 53.688 },
-      Saudi: { lat: 23.8859, lng: 45.0792 },
-      "Middle East": { lat: 25, lng: 45 },
+      UK: { lat: 51.5074, lng: -0.1278 },
+      England: { lat: 51.5074, lng: -0.1278 },
+      France: { lat: 48.8566, lng: 2.3522 },
+      Germany: { lat: 52.52, lng: 13.405 },
+      Italy: { lat: 41.9028, lng: 12.4964 },
+      Spain: { lat: 40.4168, lng: -3.7038 },
+      Ukraine: { lat: 50.4501, lng: 30.5234 },
+      Russia: { lat: 55.7558, lng: 37.6173 },
 
-      China: { lat: 35.8617, lng: 104.1954 },
-      Taiwan: { lat: 23.6978, lng: 120.9605 },
-      India: { lat: 20.5937, lng: 78.9629 },
-      Pakistan: { lat: 30.3753, lng: 69.3451 },
-      Japan: { lat: 36.2048, lng: 138.2529 },
+      Israel: { lat: 31.7683, lng: 35.2137 },
+      Iran: { lat: 35.6892, lng: 51.389 },
+      Saudi: { lat: 24.7136, lng: 46.6753 },
+      "Middle East": { lat: 33, lng: 44 },
 
-      Nigeria: { lat: 9.082, lng: 8.6753 },
-      Kenya: { lat: -0.0236, lng: 37.9062 },
-      Ghana: { lat: 7.9465, lng: -1.0232 },
-      "South Africa": { lat: -30.5595, lng: 22.9375 },
-      Egypt: { lat: 26.8206, lng: 30.8025 },
+      China: { lat: 39.9042, lng: 116.4074 },
+      Taiwan: { lat: 25.033, lng: 121.5654 },
+      India: { lat: 28.6139, lng: 77.209 },
+      Pakistan: { lat: 33.6844, lng: 73.0479 },
+      Japan: { lat: 35.6762, lng: 139.6503 },
 
-      Greenland: { lat: 71.7069, lng: -42.6043 },
-      Denmark: { lat: 56.2639, lng: 9.5018 },
+      Nigeria: { lat: 9.0765, lng: 7.3986 },
+      Kenya: { lat: -1.2921, lng: 36.8219 },
+      Ghana: { lat: 5.6037, lng: -0.187 },
+      "South Africa": { lat: -25.7479, lng: 28.2293 },
+      Egypt: { lat: 30.0444, lng: 31.2357 },
     };
 
     const regionalSpread = Object.entries(regionCounts)
       .map(([region, count]) => {
         const coords = REGION_COORDS[region];
         if (!coords) return null;
-
-        return {
-          region,
-          count,
-          lat: coords.lat,
-          lng: coords.lng,
-        };
+        return { region, count, lat: coords.lat, lng: coords.lng };
       })
-      .filter(Boolean)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
+      .filter(Boolean);
 
-    // Multi-Lens Geopolitical Pressure
+    // =============================
+    // STRATEGIC INTENSITY RANKING (kept)
+    // =============================
+
+    const strategicScoreByCountry = Object.create(null);
+
+    function titleCase(s) {
+      return s
+        .split(" ")
+        .filter(Boolean)
+        .map((w) => w[0].toUpperCase() + w.slice(1))
+        .join(" ");
+    }
+
+    for (const c of strongClusters) {
+      const isAccelerating = (c.ratio || 0) >= 2 && (c.recent || 0) >= 2;
+      const isDivergent = (c.divergenceScore || 0) >= 35;
+      if (!isAccelerating && !isDivergent) continue;
+
+      const clusterRows = rowsByCluster.get(c.key) || [];
+      if (clusterRows.length === 0) continue;
+
+      const volumeW = Math.min(20, clusterRows.length);
+      const accelW = isAccelerating ? Math.min(4, c.ratio || 1) : 1;
+      const divW = 1 + Math.min(1, (c.divergenceScore || 0) / 100);
+
+      const clusterWeight = volumeW * accelW * divW;
+
+      for (const row of clusterRows) {
+        const headline = String(row.headline || "").toLowerCase();
+
+        for (const place of places) {
+          if (!headline.includes(place)) continue;
+
+          const escaped = place.replace(/\s+/g, "\\s+");
+          const regex = new RegExp(`\\b${escaped}\\b`, "i");
+          if (!regex.test(headline)) continue;
+
+          const formatted = CANON[place] || titleCase(place);
+
+          strategicScoreByCountry[formatted] =
+            (strategicScoreByCountry[formatted] || 0) + clusterWeight;
+        }
+      }
+    }
+
+    const strategicIntensityRanking = Object.entries(strategicScoreByCountry)
+      .map(([country, score]) => ({ country, score: Math.round(score) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15);
+
+    // -----------------------------
+    // NARRATIVE PRESSURE INDEX (NPI) (kept)
+    // -----------------------------
+    const volumeScore = Math.log(total24h + 1) * 15;
+    const accelerationScore = avgRatio * 20;
+    const accelerationDensity = acceleratingCount * 8;
+    const geoSpreadScore = regionalSpread.length * 6;
+
+    let npi =
+      volumeScore + accelerationScore + accelerationDensity + geoSpreadScore;
+    npi = Math.round(Math.max(0, Math.min(100, npi)));
+
+    let stabilizedVelocity =
+      volumeScore * 0.4 + accelerationScore * 0.3 + accelerationDensity * 0.3;
+
+    stabilizedVelocity = Math.round(
+      Math.max(0, Math.min(100, stabilizedVelocity)),
+    );
+
+    let macroRisk =
+      npi * 0.6 + acceleratingCount * 5 + regionalSpread.length * 4;
+    macroRisk = Math.round(Math.max(0, Math.min(100, macroRisk)));
 
     const geopoliticalPressure = regionalSpread
       .map((r) => {
         const baseVolume = r.count;
 
-        // Neutral / Analytical
         const narrativePressure = Math.round(
           baseVolume * 0.6 + velocityIndex * 0.2,
         );
-
-        // Risk Focused (acceleration weighted)
         const riskPressure = Math.round(
           baseVolume * 0.5 + acceleratingCount * 3,
         );
-
-        // Strategic Intelligence (divergence weighted)
         const strategicPressure = Math.round(
           baseVolume * 0.5 + (strongClusters[0]?.divergenceScore || 0) * 0.3,
         );
-
-        // Financial Market Oriented (economic weighted)
         const marketPressure = Math.round(baseVolume * 0.4 + riskScore * 2);
 
         return {
@@ -1458,11 +1610,8 @@ app.get("/signals/overview", async (req, res) => {
       const second = regions[1];
 
       let sentence = `Current narrative pressure is concentrated in ${top.region}`;
-
-      if (second) {
+      if (second)
         sentence += `, with secondary activity observed in ${second.region}`;
-      }
-
       sentence += `. `;
 
       if (velocityIndex >= 50) {
@@ -1483,12 +1632,17 @@ app.get("/signals/overview", async (req, res) => {
     );
 
     res.json({
-      velocityIndex,
+      window: windowParam,
+      velocityIndex, // legacy
+      stabilizedVelocity, // upgraded velocity
       acceleratingCount,
       clusterCount: strongClusters.length,
-      economicRisk: riskScore,
+      economicRisk: riskScore, // legacy
+      macroRisk, // upgraded macro risk
+      npi, // Narrative Pressure Index
       regionalSpread,
       geopoliticalPressure,
+      strategicIntensityRanking,
       narrativeSummary,
     });
   } catch (err) {

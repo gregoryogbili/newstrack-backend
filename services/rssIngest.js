@@ -6,9 +6,9 @@ console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 const parser = new Parser({
   requestOptions: {
     headers: {
-      "User-Agent": "NewsTracBot/1.0 (+https://newstrac.org)"
-    }
-  }
+      "User-Agent": "NewsTracBot/1.0 (+https://newstrac.org)",
+    },
+  },
 });
 
 /* ===========================
@@ -16,9 +16,21 @@ const parser = new Parser({
    Separate from journalism feeds
 =========================== */
 const SIGNAL_FEEDS = [
-  { name: "Reddit WorldNews", url: "https://www.reddit.com/r/worldnews/.rss", platform: "reddit" },
-  { name: "Reddit Economics", url: "https://www.reddit.com/r/economics/.rss", platform: "reddit" },
-  { name: "Reddit Technology", url: "https://www.reddit.com/r/technology/.rss", platform: "reddit" }
+  {
+    name: "Reddit WorldNews",
+    url: "https://www.reddit.com/r/worldnews/.rss",
+    platform: "reddit",
+  },
+  {
+    name: "Reddit Economics",
+    url: "https://www.reddit.com/r/economics/.rss",
+    platform: "reddit",
+  },
+  {
+    name: "Reddit Technology",
+    url: "https://www.reddit.com/r/technology/.rss",
+    platform: "reddit",
+  },
 ];
 
 /* ===========================
@@ -26,15 +38,20 @@ const SIGNAL_FEEDS = [
    (high quality, stable)
 =========================== */
 const FEEDS = [
-
   /* =====================================================
      🌍 CORE GLOBAL BACKBONE (High Credibility / Wire)
   ===================================================== */
 
   { name: "BBC World", url: "http://feeds.bbci.co.uk/news/world/rss.xml" },
   { name: "BBC UK", url: "http://feeds.bbci.co.uk/news/uk/rss.xml" },
-  { name: "Reuters World", url: "https://www.reutersagency.com/feed/?best-topics=world&post_type=best" },
-  { name: "Reuters Business", url: "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best" },
+  {
+    name: "Reuters World",
+    url: "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
+  },
+  {
+    name: "Reuters Business",
+    url: "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
+  },
   { name: "Associated Press", url: "https://apnews.com/rss" },
   { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top" },
   { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml" },
@@ -45,22 +62,55 @@ const FEEDS = [
 
   { name: "CNN Top Stories", url: "http://rss.cnn.com/rss/cnn_topstories.rss" },
   { name: "NBC Top Stories", url: "http://feeds.nbcnews.com/feeds/topstories" },
-  { name: "ABC News Top Stories", url: "http://feeds.abcnews.com/abcnews/topstories" },
-  { name: "NYT World", url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml" },
-  { name: "NYT Technology", url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml" },
-  { name: "Washington Post World", url: "https://feeds.washingtonpost.com/rss/world" },
+  {
+    name: "ABC News Top Stories",
+    url: "http://feeds.abcnews.com/abcnews/topstories",
+  },
+  {
+    name: "NYT World",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+  },
+  {
+    name: "NYT Technology",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+  },
+  {
+    name: "Washington Post World",
+    url: "https://feeds.washingtonpost.com/rss/world",
+  },
   { name: "Politico US", url: "https://www.politico.com/rss/politics08.xml" },
   { name: "Axios", url: "https://api.axios.com/feed/" },
   { name: "NPR World", url: "https://feeds.npr.org/1004/rss.xml" },
 
   /* =====================================================
+     North America
+  ===================================================== */
+
+  { name: "CBC News", url: "https://www.cbc.ca/cmlink/rss-topstories" },
+  {
+    name: "Globe and Mail",
+    url: "https://www.theglobeandmail.com/arc/outboundfeeds/rss/",
+  },
+  { name: "National Post", url: "https://nationalpost.com/feed/" },
+  { name: "Macleans", url: "https://www.macleans.ca/feed/" },
+
+  /* =====================================================
      🇬🇧 UNITED KINGDOM
   ===================================================== */
 
-  { name: "Sky News World", url: "https://feeds.skynews.com/feeds/rss/world.xml" },
+  {
+    name: "Sky News World",
+    url: "https://feeds.skynews.com/feeds/rss/world.xml",
+  },
   { name: "The Guardian World", url: "https://www.theguardian.com/world/rss" },
-  { name: "The Guardian Business", url: "https://www.theguardian.com/business/rss" },
-  { name: "The Guardian Technology", url: "https://www.theguardian.com/uk/technology/rss" },
+  {
+    name: "The Guardian Business",
+    url: "https://www.theguardian.com/business/rss",
+  },
+  {
+    name: "The Guardian Technology",
+    url: "https://www.theguardian.com/uk/technology/rss",
+  },
   { name: "Financial Times", url: "https://www.ft.com/?format=rss" },
   { name: "The Independent", url: "https://www.independent.co.uk/rss" },
   { name: "Evening Standard", url: "https://www.standard.co.uk/rss" },
@@ -69,30 +119,75 @@ const FEEDS = [
      🇪🇺 EUROPE
   ===================================================== */
 
-  { name: "Euronews", url: "https://www.euronews.com/rss?format=mrss&level=theme&name=news" },
+  {
+    name: "Euronews",
+    url: "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
+  },
   { name: "Politico Europe", url: "https://www.politico.eu/feed/" },
-  { name: "Irish Times", url: "https://www.irishtimes.com/cmlink/news-1.1319192" },
+  {
+    name: "Irish Times",
+    url: "https://www.irishtimes.com/cmlink/news-1.1319192",
+  },
   { name: "The Local Europe", url: "https://feeds.thelocal.com/rss/en" },
   { name: "Moscow Times", url: "https://www.themoscowtimes.com/rss/news" },
+  { name: "Kyiv Post", url: "https://www.kyivpost.com/rss" },
+  { name: "Ukrinform", url: "https://www.ukrinform.net/rss/block-lastnews" },
+  { name: "Baltic Times", url: "https://www.baltictimes.com/rss/" },
+  { name: "ERR News Estonia", url: "https://www.err.ee/rss" },
+  { name: "LRT Lithuania", url: "https://www.lrt.lt/en/rss" },
+  { name: "Radio Prague", url: "https://english.radio.cz/feed" },
+  { name: "Emerging Europe", url: "https://emerging-europe.com/feed/" },
+  { name: "Euractiv", url: "https://www.euractiv.com/feed/" },
+  { name: "SwissInfo", url: "https://www.swissinfo.ch/eng/rss/homepage" },
+  { name: "ANSA Italy", url: "https://www.ansa.it/sito/ansait/rss.html" },
 
   /* =====================================================
      🌍 AFRICA
   ===================================================== */
 
-  { name: "AllAfrica", url: "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf" },
+  {
+    name: "AllAfrica",
+    url: "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf",
+  },
   { name: "Daily Nation (Kenya)", url: "https://nation.africa/kenya/rss.xml" },
-  { name: "Premium Times (Nigeria)", url: "https://www.premiumtimesng.com/feed" },
+  {
+    name: "Premium Times (Nigeria)",
+    url: "https://www.premiumtimesng.com/feed",
+  },
   { name: "Mail & Guardian", url: "https://mg.co.za/feed/" },
-  { name: "The East African", url: "https://www.theeastafrican.co.ke/tea/rss.xml" },
+  {
+    name: "The East African",
+    url: "https://www.theeastafrican.co.ke/tea/rss.xml",
+  },
+  { name: "Vanguard Nigeria", url: "https://www.vanguardngr.com/feed/" },
+  { name: "Citi Newsroom Ghana", url: "https://citinewsroom.com/feed/" },
+  { name: "The Citizen Tanzania", url: "https://www.thecitizen.co.tz/feed/" },
+  { name: "New Vision Uganda", url: "https://www.newvision.co.ug/rss" },
+  { name: "Ethiopian Monitor", url: "https://www.ethiopianmonitor.com/feed/" },
+  { name: "EWN South Africa", url: "https://ewn.co.za/RSS" },
+  { name: "NewsDay Zimbabwe", url: "https://www.newsday.co.zw/feed/" },
+  { name: "Daily Maverick (SA)", url: "https://www.dailymaverick.co.za/feed/" },
+  { name: "BusinessDay Nigeria", url: "https://businessday.ng/feed/" },
 
   /* =====================================================
      🌍 MIDDLE EAST
   ===================================================== */
 
   { name: "Arab News", url: "https://www.arabnews.com/rss.xml" },
-  { name: "Jerusalem Post", url: "https://www.jpost.com/rss/rssfeedsfrontpage.aspx" },
+  {
+    name: "Jerusalem Post",
+    url: "https://www.jpost.com/rss/rssfeedsfrontpage.aspx",
+  },
   { name: "Middle East Eye", url: "https://www.middleeasteye.net/rss" },
   { name: "Times of Israel", url: "https://www.timesofisrael.com/feed/" },
+  { name: "Al-Monitor", url: "https://www.al-monitor.com/rss" },
+  { name: "Gulf News", url: "https://gulfnews.com/rss" },
+  { name: "The National (UAE)", url: "https://www.thenationalnews.com/rss" },
+  { name: "Daily Sabah (Turkey)", url: "https://www.dailysabah.com/rss" },
+  { name: "Kurdistan 24", url: "https://www.kurdistan24.net/en/rss" },
+  { name: "Rudaw (Iraq/Kurds)", url: "https://english.rudaw.net/rss" },
+  { name: "Egypt Independent", url: "https://www.egyptindependent.com/feed/" },
+  { name: "Jordan Times", url: "https://www.jordantimes.com/feed" },
 
   /* =====================================================
      🌏 SOUTH & EAST ASIA
@@ -104,6 +199,39 @@ const FEEDS = [
   { name: "Straits Times", url: "https://www.straitstimes.com/global/rss.xml" },
   { name: "Japan Times", url: "https://www.japantimes.co.jp/feed/" },
   { name: "Korea Herald", url: "http://www.koreaherald.com/rss/0200.xml" },
+  { name: "Tribune Pakistan", url: "https://tribune.com.pk/feed" },
+  {
+    name: "The Daily Star Bangladesh",
+    url: "https://www.thedailystar.net/rss.xml",
+  },
+  { name: "The Print India", url: "https://theprint.in/feed/" },
+  {
+    name: "Economic Times India",
+    url: "https://economictimes.indiatimes.com/rssfeedstopstories.cms",
+  },
+  {
+    name: "Bangkok Post",
+    url: "https://www.bangkokpost.com/rss/data/topstories.xml",
+  },
+  { name: "Jakarta Post", url: "https://www.thejakartapost.com/rss" },
+  { name: "Rappler Philippines", url: "https://www.rappler.com/feed/" },
+  { name: "Phnom Penh Post", url: "https://www.phnompenhpost.com/rss.xml" },
+  { name: "VnExpress Vietnam", url: "https://e.vnexpress.net/rss/news.rss" },
+  { name: "Colombo Gazette", url: "https://colombogazette.com/feed/" },
+  {
+    name: "My Republica Nepal",
+    url: "https://myrepublica.nagariknetwork.com/rss",
+  },
+
+  /* =====================================================
+     🌏 Central Asia & Caucasus 
+  ===================================================== */
+
+  { name: "Eurasianet", url: "https://eurasianet.org/rss.xml" },
+  { name: "AkiPress Central Asia", url: "https://akipress.com/rss/" },
+  { name: "Civil Georgia", url: "https://civil.ge/feed" },
+  { name: "Agenda.ge", url: "https://agenda.ge/en/rss" },
+  { name: "Trend News Azerbaijan", url: "https://en.trend.az/rss" },
 
   /* =====================================================
      🌎 LATIN AMERICA
@@ -112,14 +240,45 @@ const FEEDS = [
   { name: "Buenos Aires Herald", url: "https://buenosairesherald.com/feed" },
   { name: "Rio Times", url: "https://riotimesonline.com/feed/" },
   { name: "Merco Press", url: "https://en.mercopress.com/rss" },
-  { name: "El País (English)", url: "https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada" },
+  {
+    name: "El País (English)",
+    url: "https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada",
+  },
+  {
+    name: "Agencia Brasil",
+    url: "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
+  },
+  { name: "Infobae", url: "https://www.infobae.com/feeds/rss/" },
+  { name: "Proceso Mexico", url: "https://www.proceso.com.mx/feed/" },
+  { name: "El Comercio Peru", url: "https://www.elcomercio.com/rss" },
+  {
+    name: "El Espectador Colombia",
+    url: "https://www.elespectador.com/arcio/rss/",
+  },
+  { name: "La Prensa Honduras", url: "https://www.laprensa.hn/feed/" },
+  { name: "Prensa Libre Guatemala", url: "https://www.prensalibre.com/feed" },
+  { name: "Confidencial Nicaragua", url: "https://confidencial.digital/feed/" },
+  {
+    name: "Dialogue Chino (China-LatAm)",
+    url: "https://dialogochino.net/en/feed/",
+  },
 
   /* =====================================================
      🌊 PACIFIC / OCEANIA
   ===================================================== */
 
-  { name: "ABC Australia", url: "https://www.abc.net.au/news/feed/51120/rss.xml" },
+  {
+    name: "ABC Australia",
+    url: "https://www.abc.net.au/news/feed/51120/rss.xml",
+  },
   { name: "RNZ New Zealand", url: "https://www.rnz.co.nz/rss/news.xml" },
+  {
+    name: "NZ Herald",
+    url: "https://www.nzherald.co.nz/arc/outboundfeeds/rss/?outputType=xml",
+  },
+  { name: "RNZ Pacific", url: "https://www.rnz.co.nz/rss/pacificnews.xml" },
+  { name: "SBS Australia", url: "https://www.sbs.com.au/news/feed" },
+  { name: "Stuff NZ", url: "https://www.stuff.co.nz/rss" },
 
   /* =====================================================
      🔬 TECHNOLOGY / SCIENCE / AI / MARKETS (Focus)
@@ -128,14 +287,41 @@ const FEEDS = [
   { name: "TechCrunch", url: "https://techcrunch.com/feed/" },
   { name: "The Verge", url: "https://www.theverge.com/rss/index.xml" },
   { name: "WIRED", url: "https://www.wired.com/rss/" },
-  { name: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index" },
-  { name: "MIT Technology Review", url: "https://www.technologyreview.com/feed/" },
+  {
+    name: "Ars Technica",
+    url: "https://feeds.arstechnica.com/arstechnica/index",
+  },
+  {
+    name: "MIT Technology Review",
+    url: "https://www.technologyreview.com/feed/",
+  },
   { name: "VentureBeat AI", url: "https://venturebeat.com/category/ai/feed/" },
-  { name: "Bloomberg Markets", url: "https://feeds.bloomberg.com/markets/news.rss" },
+  {
+    name: "Bloomberg Markets",
+    url: "https://feeds.bloomberg.com/markets/news.rss",
+  },
   { name: "Nature News", url: "https://www.nature.com/nature.rss" },
   { name: "ScienceDaily", url: "https://www.sciencedaily.com/rss/all.xml" },
-  { name: "BleepingComputer", url: "https://www.bleepingcomputer.com/feed/" }
+  { name: "BleepingComputer", url: "https://www.bleepingcomputer.com/feed/" },
 
+  /* =====================================================
+      Global Specialist / Geopolitics 
+  ===================================================== */
+
+  { name: "Foreign Policy", url: "https://foreignpolicy.com/feed/" },
+  { name: "The Diplomat", url: "https://thediplomat.com/feed/" },
+  { name: "IPS News", url: "https://www.ipsnews.net/feed/" },
+  { name: "Crisis Group", url: "https://www.crisisgroup.org/rss.xml" },
+  { name: "Relief Web", url: "https://reliefweb.int/updates/rss.xml" },
+  {
+    name: "World Politics Review",
+    url: "https://www.worldpoliticsreview.com/feed/",
+  },
+  {
+    name: "Lowy Institute",
+    url: "https://www.lowyinstitute.org/the-interpreter/rss.xml",
+  },
+  { name: "Open Democracy", url: "https://www.opendemocracy.net/en/rss.xml" },
 ];
 
 /**
@@ -154,50 +340,70 @@ function inferCategory(headline = "", summary = "", source = "") {
   // ==========================
   // ECONOMY / BUSINESS
   // ==========================
-  if (/(economy|economic|inflation|gdp|recession|stocks?|markets?|bank|finance|business|earnings|profit|oil prices?|trade|tariffs?|interest rates?)/.test(text)) {
+  if (
+    /(economy|economic|inflation|gdp|recession|stocks?|markets?|bank|finance|business|earnings|profit|oil prices?|trade|tariffs?|interest rates?)/.test(
+      text,
+    )
+  ) {
     return "economy";
   }
 
   // ==========================
   // TECHNOLOGY
   // ==========================
-  if (/(tech|technology|ai|artificial intelligence|robot|software|hardware|chip|cyber|hacker|data breach|google|microsoft|apple|meta|tesla)/.test(text)) {
-  return "technology";
+  if (
+    /(tech|technology|ai|artificial intelligence|robot|software|hardware|chip|cyber|hacker|data breach|google|microsoft|apple|meta|tesla)/.test(
+      text,
+    )
+  ) {
+    return "technology";
   }
 
   // ==========================
   // DOMESTIC POLITICS
   // ==========================
-  if (/(election|president|prime minister|pm|minister|senate|congress|parliament|government|policy|bill|lawmakers?)/.test(text)) {
+  if (
+    /(election|president|prime minister|pm|minister|senate|congress|parliament|government|policy|bill|lawmakers?)/.test(
+      text,
+    )
+  ) {
     return "politics";
   }
 
   // ==========================
   // GEOPOLITICS / WAR
   // ==========================
-  if (/(ukraine|russia|china|nato|israel|gaza|iran|middle east|taiwan|military|war|conflict)/.test(text)) {
+  if (
+    /(ukraine|russia|china|nato|israel|gaza|iran|middle east|taiwan|military|war|conflict)/.test(
+      text,
+    )
+  ) {
     return "world";
   }
 
   // ==========================
   // LAW / CRIME
   // ==========================
-  if (/(court|trial|arrest|charged|sentence|convicted|crime|fraud)/.test(text)) {
+  if (
+    /(court|trial|arrest|charged|sentence|convicted|crime|fraud)/.test(text)
+  ) {
     return "politics";
   }
 
   // ==========================
   // DISASTERS
   // ==========================
-  if (/(storm|flood|earthquake|wildfire|hurricane|typhoon|explosion|plane crash|landslide)/.test(text)) {
+  if (
+    /(storm|flood|earthquake|wildfire|hurricane|typhoon|explosion|plane crash|landslide)/.test(
+      text,
+    )
+  ) {
     return "world";
   }
 
   // Default
   return "world";
 }
-
-
 
 /**
  * Time-based breaking boost
@@ -211,9 +417,9 @@ function computeTimeBoost(pubDate) {
   const now = Date.now();
   const diffMinutes = (now - published) / (1000 * 60);
 
-  if (diffMinutes <= 60) return 25;   // 1 hour
-  if (diffMinutes <= 180) return 15;  // 3 hours
-  if (diffMinutes <= 360) return 10;  // 6 hours
+  if (diffMinutes <= 60) return 25; // 1 hour
+  if (diffMinutes <= 180) return 15; // 3 hours
+  if (diffMinutes <= 360) return 10; // 6 hours
 
   return 0;
 }
@@ -264,9 +470,23 @@ function extractKeywords(text = "") {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, "")
     .split(/\s+/)
-    .filter(word =>
-      word.length > 3 &&
-      !["with","that","this","from","have","will","they","about","there","their","after","before"].includes(word)
+    .filter(
+      (word) =>
+        word.length > 3 &&
+        ![
+          "with",
+          "that",
+          "this",
+          "from",
+          "have",
+          "will",
+          "they",
+          "about",
+          "there",
+          "their",
+          "after",
+          "before",
+        ].includes(word),
     );
 }
 
@@ -291,7 +511,45 @@ async function ingestOneFeed(pool, feedConfig) {
     }
 
     const category = inferCategory(headline, summary, feedConfig.name);
-    const initialScore = computeInitialScore(headline, category, pubDate);
+
+    let initialScore = computeInitialScore(headline, category, pubDate);
+
+    // 🔥 HEAT ENGINE START
+
+    try {
+      const keywords = extractKeywords(headline);
+
+      if (keywords.length > 0) {
+        const signalResult = await pool.query(
+          `
+      SELECT headline
+      FROM signals
+      WHERE published_at > NOW() - INTERVAL '6 hours'
+      LIMIT 100
+      `,
+        );
+
+        let heatMatches = 0;
+
+        for (const row of signalResult.rows) {
+          const signalWords = extractKeywords(row.headline);
+
+          const overlap = keywords.filter((k) => signalWords.includes(k));
+
+          if (overlap.length >= 2) {
+            heatMatches++;
+          }
+        }
+
+        const heatBoost = Math.min(heatMatches * 5, 20);
+
+        initialScore += heatBoost;
+      }
+    } catch (err) {
+      console.log("Heat engine error:", err.message);
+    }
+
+    // 🔥 HEAT ENGINE END
 
     // 🔥 STATUS TIERS
     let status = "new";
@@ -307,14 +565,14 @@ async function ingestOneFeed(pool, feedConfig) {
     }
 
     const normalizedTitle = headline
-     .toLowerCase()
-     .replace(/[^a-z0-9]/g, "")
-     .trim();
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .trim();
 
     const contentHash = crypto
-     .createHash("sha256")
-     .update(normalizedTitle)
-     .digest("hex");
+      .createHash("sha256")
+      .update(normalizedTitle)
+      .digest("hex");
 
     try {
       const result = await pool.query(
@@ -344,8 +602,8 @@ async function ingestOneFeed(pool, feedConfig) {
           status,
           initialScore,
           contentHash,
-          pubDate ? new Date(pubDate) : null
-        ]
+          pubDate ? new Date(pubDate) : null,
+        ],
       );
 
       if (result.rowCount === 0) skipped++;
@@ -404,8 +662,8 @@ async function ingestSignalFeed(pool, feedConfig) {
           sourceUrl,
           feedConfig.platform,
           contentHash,
-          pubDate ? new Date(pubDate) : null
-        ]
+          pubDate ? new Date(pubDate) : null,
+        ],
       );
 
       if (result.rowCount > 0) inserted++;
@@ -424,14 +682,20 @@ export async function ingestAllFeeds(pool) {
   let inserted = 0;
   let skipped = 0;
 
-  for (const feedConfig of FEEDS) {
+  const UNIQUE_FEEDS = [
+    ...new Map(FEEDS.map((f) => [String(f.url).trim(), f])).values(),
+  ];
+
+  for (const feedConfig of UNIQUE_FEEDS) {
     console.log(`🌍 Processing: ${feedConfig.name}`);
 
     try {
       const res = await ingestOneFeed(pool, feedConfig);
       inserted += res.inserted;
       skipped += res.skipped;
-      console.log(`✅ Done: ${feedConfig.name} | inserted=${res.inserted} skipped=${res.skipped}`);
+      console.log(
+        `✅ Done: ${feedConfig.name} | inserted=${res.inserted} skipped=${res.skipped}`,
+      );
     } catch (err) {
       console.log(`⚠️ Failed feed: ${feedConfig.name} | ${err.message}`);
     }
