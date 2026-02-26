@@ -276,6 +276,62 @@ app.post("/journalists/:id/posts", requireAuth, async (req, res) => {
 });
 
 /* ===========================
+   GET JOURNALIST POSTS
+=========================== */
+
+app.get("/journalists/:id/posts", requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  if (String(req.user.id) !== String(id)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT id, headline, description AS content, views, created_at
+      FROM posts
+      WHERE author_id = $1
+      ORDER BY created_at DESC
+      `,
+      [id],
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Get journalist posts error:", err);
+    res.status(500).json({ error: "Failed to load posts" });
+  }
+});
+
+/* ===========================
+   REVENUE SIMULATION
+=========================== */
+
+app.get("/revenue/simulate", requireAuth, async (req, res) => {
+  const total = Number(req.query.total);
+
+  if (!total || total <= 0) {
+    return res.status(400).json({ error: "Invalid total revenue" });
+  }
+
+  try {
+    // Simple prototype split logic
+    const journalistShare = total * 0.7;
+    const platformShare = total * 0.3;
+
+    res.json({
+      total_revenue: total,
+      journalist_share: journalistShare,
+      platform_share: platformShare,
+    });
+  } catch (err) {
+    console.error("Revenue simulation error:", err);
+    res.status(500).json({ error: "Revenue simulation failed" });
+  }
+});
+
+/* ===========================
    TRENDING POSTS
    (Moved ABOVE dynamic route)
 =========================== */
@@ -324,6 +380,80 @@ app.get("/posts/:id", async (req, res) => {
   } catch (err) {
     console.error("Single post error:", err);
     res.status(500).json({ error: "Failed to fetch post" });
+  }
+});
+
+/* ===========================
+   INCREMENT POST VIEWS
+=========================== */
+
+app.post("/posts/:id/view", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE posts
+      SET views = COALESCE(views, 0) + 1
+      WHERE id = $1
+      RETURNING id, views
+      `,
+      [id],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    res.json({ ok: true, post: result.rows[0] });
+  } catch (err) {
+    console.error("Increment views error:", err);
+    res.status(500).json({ error: "Failed to increment views" });
+  }
+});
+
+/* ===========================
+   JOURNALIST METRICS (Views → Earnings)
+=========================== */
+
+const DEFAULT_RPM_GBP = 3.5;
+
+app.get("/journalists/:id/metrics", requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  // Only allow user to see their own metrics
+  if (String(req.user.id) !== String(id)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const postsResult = await pool.query(
+      `
+      SELECT
+        COUNT(*)::int AS total_posts,
+        COALESCE(SUM(COALESCE(views, 0)), 0)::int AS total_views
+      FROM posts
+      WHERE author_id = $1
+      `,
+      [id],
+    );
+
+    const total_posts = postsResult.rows[0]?.total_posts ?? 0;
+    const total_views = postsResult.rows[0]?.total_views ?? 0;
+
+    const rpm = DEFAULT_RPM_GBP;
+    const estimated_earnings = Number(((total_views / 1000) * rpm).toFixed(2));
+
+    res.json({
+      journalist_id: String(id),
+      total_posts,
+      total_views,
+      rpm_gbp: rpm,
+      estimated_earnings_gbp: estimated_earnings,
+    });
+  } catch (err) {
+    console.error("Journalist metrics error:", err);
+    res.status(500).json({ error: "Failed to load metrics" });
   }
 });
 
