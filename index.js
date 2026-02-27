@@ -1270,7 +1270,7 @@ app.get("/signals/overview", async (req, res) => {
     // IMPORTANT: Always fetch enough history to compute "previous" + baselines.
     // If you fetch only 6h, previous becomes 0 and ratios blow up.
     // So we keep a stable lookback (3 days) and apply the window in logic.
-    const fetchIntervalSQL = "72 hours";
+    const fetchIntervalSQL = `${recentHours * 2} hours`; // 6h->12h, 24h->48h, 72h->144h
 
     const result = await pool.query(`
       SELECT headline, summary, published_at
@@ -1285,6 +1285,10 @@ app.get("/signals/overview", async (req, res) => {
     // Recent window boundary (dynamic)
     const recentWindowAgo = new Date(
       now.getTime() - recentHours * 60 * 60 * 1000,
+    );
+
+    const previousWindowAgo = new Date(
+      now.getTime() - recentHours * 2 * 60 * 60 * 1000,
     );
 
     // -----------------------------
@@ -1397,8 +1401,13 @@ app.get("/signals/overview", async (req, res) => {
       const published = new Date(row.published_at);
 
       // ✅ This is now window-aware
-      if (published > recentWindowAgo) clusters[key].recent += 1;
-      else clusters[key].previous += 1;
+      if (published > recentWindowAgo) {
+        clusters[key].recent += 1; // last X hours
+      } else if (published > previousWindowAgo) {
+        clusters[key].previous += 1; // the X hours before that
+      } else {
+        // older than 2X window — ignore (shouldn't happen because SQL already filters)
+      }
     }
 
     const strongClusters = [];
@@ -1433,7 +1442,7 @@ app.get("/signals/overview", async (req, res) => {
 
     for (const c of strongClusters) {
       const baseline = c.previous || 1;
-      const ratio = c.recent / baseline;
+      const ratio = c.recent / (baseline + 2);
 
       totalRecent += c.recent;
       totalRatio += ratio;
@@ -1441,10 +1450,15 @@ app.get("/signals/overview", async (req, res) => {
       if (c.recent >= 2 && ratio >= 2) acceleratingCount += 1;
     }
 
+    // Normalize recent count by window size
+    const windowFactor = recentHours / 24; // 24h = 1, 72h = 3
+    const normalizedRecent = totalRecent / windowFactor;
+
     const avgRatio =
       strongClusters.length > 0 ? totalRatio / strongClusters.length : 0;
 
-    let velocityIndex = totalRecent * 2 + avgRatio * 10 + acceleratingCount * 5;
+    let velocityIndex =
+      normalizedRecent * 2 + avgRatio * 10 + acceleratingCount * 5;
     velocityIndex = Math.round(Math.max(0, Math.min(100, velocityIndex)));
 
     // Economic Risk Pulse (V1) (kept)
@@ -1533,7 +1547,7 @@ app.get("/signals/overview", async (req, res) => {
       for (const row of clusterRows) {
         const headline = String(row.headline || "").toLowerCase();
 
-        for (const place of places.filter(p => p !== "greenland")) {
+        for (const place of places.filter((p) => p !== "greenland")) {
           if (!headline.includes(place)) continue;
 
           const escaped = place.replace(/\s+/g, "\\s+");
