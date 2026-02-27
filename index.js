@@ -1533,7 +1533,7 @@ app.get("/signals/overview", async (req, res) => {
       for (const row of clusterRows) {
         const headline = String(row.headline || "").toLowerCase();
 
-        for (const place of places) {
+        for (const place of places.filter(p => p !== "greenland")) {
           if (!headline.includes(place)) continue;
 
           const escaped = place.replace(/\s+/g, "\\s+");
@@ -1556,13 +1556,16 @@ app.get("/signals/overview", async (req, res) => {
     // -----------------------------
     // NARRATIVE PRESSURE INDEX (NPI) (kept)
     // -----------------------------
-    const volumeScore = Math.log(total24h + 1) * 15;
-    const accelerationScore = avgRatio * 20;
-    const accelerationDensity = acceleratingCount * 8;
-    const geoSpreadScore = regionalSpread.length * 6;
+    // Normalize components
+
+    const volumeScore = Math.min(25, Math.log(total24h + 1) * 8);
+    const accelerationScore = Math.min(25, avgRatio * 10);
+    const accelerationDensity = Math.min(25, acceleratingCount * 5);
+    const geoSpreadScore = Math.min(25, regionalSpread.length * 3);
 
     let npi =
       volumeScore + accelerationScore + accelerationDensity + geoSpreadScore;
+
     npi = Math.round(Math.max(0, Math.min(100, npi)));
 
     let stabilizedVelocity =
