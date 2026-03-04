@@ -940,7 +940,15 @@ function findBestExistingClusterKey(headline, clusters) {
 /* ===========================
    Simple Prototype Clustering
 =========================== */
+
+let cachedClusters = null;
+let cachedClustersTime = 0;
+
 app.get("/clusters", async (req, res) => {
+  if (cachedClusters && Date.now() - cachedClustersTime < 120000) {
+    return res.json(cachedClusters);
+  }
+
   try {
     const result = await pool.query(`
       SELECT headline, summary, source_name, published_at, initial_score
@@ -1097,6 +1105,9 @@ app.get("/clusters", async (req, res) => {
       })
       .sort((a, b) => b.signalStrength - a.signalStrength)
       .slice(0, 20);
+
+    cachedClusters = formatted;
+    cachedClustersTime = Date.now();
 
     res.json(formatted);
   } catch (err) {
