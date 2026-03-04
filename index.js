@@ -457,11 +457,18 @@ app.get("/journalists/:id/metrics", requireAuth, async (req, res) => {
   }
 });
 
+let cachedFeed = null;
+let cachedFeedTime = 0;
+
 /* ===========================
    FEED (Cluster-Aware, Preserves Scoring Logic)
 =========================== */
 
 app.get("/feed", async (req, res) => {
+  if (cachedFeed && Date.now() - cachedFeedTime < 120000) {
+    return res.json(cachedFeed);
+  }
+
   try {
     // 1️⃣ Keep ORIGINAL ranking logic intact
     const result = await pool.query(`
@@ -478,7 +485,7 @@ app.get("/feed", async (req, res) => {
       AND published_at IS NOT NULL
       AND published_at > NOW() - INTERVAL '36 hours'
       ORDER BY ranking_score DESC
-      LIMIT 150;
+      LIMIT 80;
     `);
 
     const rows = result.rows || [];
@@ -530,6 +537,9 @@ app.get("/feed", async (req, res) => {
         clusterCount: c.clusterCount,
       }))
       .slice(0, 100);
+
+    cachedFeed = clusteredFeed;
+    cachedFeedTime = Date.now();
 
     res.json(clusteredFeed);
   } catch (err) {
