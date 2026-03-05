@@ -229,6 +229,24 @@ setInterval(
 );
 
 /* ===========================
+   PING RENDER
+=========================== */
+const BACKEND_URL =
+  process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+
+setInterval(
+  async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/health`);
+      console.log(`🏓 Keep-alive ping: ${res.status}`);
+    } catch (err) {
+      console.warn("Keep-alive ping failed:", err.message);
+    }
+  },
+  10 * 60 * 1000,
+);
+
+/* ===========================
    POSTS
 =========================== */
 
@@ -465,7 +483,7 @@ let cachedFeedTime = 0;
 =========================== */
 
 app.get("/feed", async (req, res) => {
-  if (cachedFeed && Date.now() - cachedFeedTime < 120000) {
+  if (cachedFeed && Date.now() - cachedFeedTime < 5 * 60 * 1000) {
     return res.json(cachedFeed);
   }
 
@@ -1820,7 +1838,14 @@ const ECON_TRIGGERS = [
   "ftse",
 ];
 
+const regionDetailCache = new Map();
+
 app.get("/signals/region/:region", async (req, res) => {
+  const cacheKey = req.params.region.toLowerCase();
+  const cached = regionDetailCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < 3 * 60 * 1000) {
+    return res.json(cached.data);
+  }
   try {
     const regionName = req.params.region.toLowerCase();
 
@@ -1944,7 +1969,7 @@ app.get("/signals/region/:region", async (req, res) => {
       );
     }
 
-    res.json({
+    const payload = {
       region: req.params.region,
       articleCount,
       clusterCount,
@@ -1954,7 +1979,10 @@ app.get("/signals/region/:region", async (req, res) => {
       volatilityScore,
       economicHits,
       economicTriggerLevel,
-    });
+    };
+
+    regionDetailCache.set(cacheKey, { data: payload, time: Date.now() });
+    res.json(payload);
   } catch (err) {
     console.error("Region detail error:", err);
     res.status(500).json({ error: "Region detail failed" });
@@ -1969,7 +1997,13 @@ app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
 });
 
+let cachedRegions = null;
+let cachedRegionsTime = 0;
+
 app.get("/regions", async (req, res) => {
+  if (cachedRegions && Date.now() - cachedRegionsTime < 3 * 60 * 1000) {
+    return res.json(cachedRegions);
+  }
   try {
     const result = await pool.query(`
       SELECT id, headline, summary, source_name, source_url, published_at, initial_score
@@ -2058,6 +2092,8 @@ app.get("/regions", async (req, res) => {
     // Order regions by “importance”
     regions.sort((a, b) => (b.clusterCount || 0) - (a.clusterCount || 0));
 
+    cachedRegions = regions;
+    cachedRegionsTime = Date.now();
     res.json(regions);
   } catch (err) {
     console.error("Regions error:", err);
