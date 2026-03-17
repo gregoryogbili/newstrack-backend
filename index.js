@@ -1687,6 +1687,30 @@ app.get("/signals/overview", async (req, res) => {
       velocityIndex,
     );
 
+    // 🔥 Build narrative breakdown
+    const narrativeMap = {};
+
+    strongClusters.forEach((c) => {
+      // Simple classification based on keywords
+      let label = "General";
+
+      const text = c.key.toLowerCase();
+
+      if (/war|attack|military|conflict/.test(text)) label = "Geopolitics";
+      else if (/economy|inflation|market|bank/.test(text)) label = "Economy";
+      else if (/ai|tech|technology/.test(text)) label = "Technology";
+
+      if (!narrativeMap[label]) {
+        narrativeMap[label] = 0;
+      }
+
+      narrativeMap[label] += c.recent + c.previous;
+    });
+
+    const narrativeBreakdown = Object.entries(narrativeMap)
+      .map(([label, score]) => ({ label, score }))
+      .sort((a, b) => b.score - a.score);
+
     res.json({
       window: windowParam,
       velocityIndex, // legacy
@@ -1700,6 +1724,7 @@ app.get("/signals/overview", async (req, res) => {
       geopoliticalPressure,
       strategicIntensityRanking,
       narrativeSummary,
+      narrativeBreakdown,
     });
   } catch (err) {
     console.error("Signals overview error:", err);
