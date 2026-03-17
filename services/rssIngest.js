@@ -1,6 +1,39 @@
 import Parser from "rss-parser";
 import crypto from "crypto";
 
+function normalizeSourceName(name = "") {
+  const n = name.toLowerCase();
+
+  if (n.includes("bbc")) return "BBC";
+  if (n.includes("reuters")) return "Reuters";
+  if (n.includes("cnn")) return "CNN";
+  if (n.includes("nbc")) return "NBC";
+  if (n.includes("abc")) return "ABC";
+  if (n.includes("guardian")) return "Guardian";
+  if (n.includes("new york times") || n.includes("nyt"))
+    return "New York Times";
+  if (n.includes("financial times")) return "Financial Times";
+  if (n.includes("associated press") || n.includes("ap"))
+    return "Associated Press";
+  if (n.includes("al jazeera")) return "Al Jazeera";
+  if (n.includes("techcrunch")) return "TechCrunch";
+  if (n.includes("wired")) return "WIRED";
+  if (n.includes("verge")) return "The Verge";
+
+  // remove common RSS suffixes
+  const cleaned = name
+    .replace("Top Stories", "")
+    .replace("World", "")
+    .replace("Business", "")
+    .replace("Technology", "")
+    .replace("Markets", "")
+    .replace("Politics", "")
+    .replace("News", "")
+    .trim();
+
+  return cleaned || name;
+}
+
 console.log("🔥 RSS INGEST SERVICE FILE LOADED 🔥");
 
 const parser = new Parser({
@@ -490,6 +523,10 @@ function extractKeywords(text = "") {
     );
 }
 
+function makeClusterKey(headline = "") {
+  const words = extractKeywords(headline).slice(0, 5);
+  return words.sort().join(" ");
+}
 /* ===========================
    INTERNAL: INGEST ONE FEED
 =========================== */
@@ -512,7 +549,23 @@ async function ingestOneFeed(pool, feedConfig) {
 
     const category = inferCategory(headline, summary, feedConfig.name);
 
+    const clusterKey = makeClusterKey(headline);
+
     let initialScore = computeInitialScore(headline, category, pubDate);
+
+    // 🔥 cluster logic (counts similar stories)
+
+    const clusterResult = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM candidates WHERE cluster_key = $1`,
+      [clusterKey],
+    );
+
+    const clusterSize = (clusterResult.rows[0]?.count || 0) + 1;
+
+    // boost score if many outlets report same story
+    if (clusterSize >= 5) initialScore += 5;
+    if (clusterSize >= 10) initialScore += 10;
+    if (clusterSize >= 20) initialScore += 20;
 
     // 🔥 HEAT ENGINE START
 
@@ -587,21 +640,25 @@ async function ingestOneFeed(pool, feedConfig) {
           status,
           initial_score,
           content_hash,
+          cluster_Key,
+          cluster_Size,
           published_at
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (content_hash) DO NOTHING
         `,
         [
           headline,
           summary,
-          feedConfig.name,
+          normalizeSourceName(feedConfig.name),
           sourceUrl,
           category,
           "rss",
           status,
           initialScore,
           contentHash,
+          clusterKey,
+          clusterSize,
           pubDate ? new Date(pubDate) : null,
         ],
       );
