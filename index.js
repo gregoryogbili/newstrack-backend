@@ -1102,7 +1102,7 @@ app.get("/clusters", async (req, res) => {
         const divScore = divergenceScore(articlesForCheck);
 
         // safest: score drives the flag, but keep old logic as fallback
-        const hasDivergence = divScore >= 35 || divergent.length > 0;
+        const hasDivergence = divScore >= 60 && sourceCount >= 2;
 
         return {
           slug: key.replace(/[^a-z0-9]+/g, "-"),
@@ -1273,7 +1273,8 @@ app.get("/clusters/:slug", async (req, res) => {
     cluster.divergent = findDivergent(cluster.articles);
 
     cluster.divergenceScore = divergenceScore(cluster.articles);
-    cluster.hasDivergence = cluster.divergenceScore >= 35;
+    cluster.hasDivergence =
+      cluster.divergenceScore >= 60 && cluster.sourceCount >= 2;
 
     const geo = extractGeo(cluster.title, cluster.articles);
     cluster.regions = geo.regions;
@@ -1496,15 +1497,25 @@ app.get("/signals/overview", async (req, res) => {
     const avgRatio =
       strongClusters.length > 0 ? totalRatio / strongClusters.length : 0;
 
+    // Weight acceleration ratio more heavily; volume is secondary
     let velocityIndex =
-      normalizedRecent * 2 + avgRatio * 10 + acceleratingCount * 5;
+      avgRatio * 20 + acceleratingCount * 8 + normalizedRecent * 0.5;
     velocityIndex = Math.round(Math.max(0, Math.min(100, velocityIndex)));
 
-    // Economic Risk Pulse (V1) (kept)
+    // Count clusters whose key contains economic keywords
+    const econClusters = strongClusters.filter((c) =>
+      /inflation|rate|trade|tariff|oil|gas|market|bank|sanction|recession|currency|bond|economy/.test(
+        c.key,
+      ),
+    );
+    const econAccelerating = econClusters.filter(
+      (c) => c.recent >= 2 && c.recent / (c.previous || 1) >= 2,
+    ).length;
+
     let riskScore = 0;
-    riskScore += velocityIndex * 0.6;
-    riskScore += acceleratingCount * 8;
-    if (acceleratingCount === 0) riskScore -= 10;
+    riskScore += econClusters.length * 6; // economic cluster volume
+    riskScore += econAccelerating * 14; // accelerating economic stories
+    riskScore += velocityIndex * 0.25; // small global activity bleed
     riskScore = Math.round(Math.max(0, Math.min(100, riskScore)));
 
     // REGION COORDS (kept)
@@ -1571,7 +1582,7 @@ app.get("/signals/overview", async (req, res) => {
 
     for (const c of strongClusters) {
       const isAccelerating = (c.ratio || 0) >= 2 && (c.recent || 0) >= 2;
-      const isDivergent = (c.divergenceScore || 0) >= 35;
+      const isDivergent = (c.divergenceScore || 0) >= 60;
       if (!isAccelerating && !isDivergent) continue;
 
       const clusterRows = rowsByCluster.get(c.key) || [];
