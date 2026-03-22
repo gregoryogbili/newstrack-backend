@@ -202,31 +202,75 @@ app.get("/auth/me", requireAuth, async (req, res) => {
   }
 });
 
+
 /* ===========================
-   CLEANUP JOB
+   OVERVIEW SNAPSHOT (for delta comparison)
 =========================== */
+
+const overviewSnapshots = []; // rolling 25h of hourly snapshots
 
 setInterval(
   async () => {
     try {
+      // Reuse the same query as /signals/overview to get current values
       const result = await pool.query(`
-      DELETE FROM candidates
-      WHERE status = 'ignored'
-      AND discovered_at < NOW() - INTERVAL '3 days'
+      SELECT headline, summary, published_at, source_name
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '48 hours'
     `);
+      const rows = result.rows || [];
+      const now = new Date();
+      const recentAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-      await pool.query(`
-        DELETE FROM candidates
-        WHERE published_at < NOW() - INTERVAL '5 days'
-      `);
+      let recentCount = 0;
+      let econHits = 0;
+      const ECON_SNAP = [
+        "oil price",
+        "crude",
+        "brent",
+        "inflation",
+        "interest rate",
+        "recession",
+        "tariff",
+        "trade war",
+        "bond yield",
+      ];
 
-      console.log(`🧹 Cleanup removed ${result.rowCount} old ignored rows`);
+      for (const row of rows) {
+        const pub = new Date(row.published_at);
+        if (pub > recentAgo) {
+          recentCount++;
+          const text = (
+            (row.headline || "") +
+            " " +
+            (row.summary || "")
+          ).toLowerCase();
+          if (ECON_SNAP.some((k) => text.includes(k))) econHits++;
+        }
+      }
+
+      overviewSnapshots.push({
+        time: now,
+        velocityProxy: recentCount, // simple volume proxy
+        econProxy: econHits,
+      });
+
+      // Keep only last 25 hours of snapshots
+      const cutoff = new Date(now.getTime() - 25 * 60 * 60 * 1000);
+      while (overviewSnapshots.length && overviewSnapshots[0].time < cutoff) {
+        overviewSnapshots.shift();
+      }
+
+      console.log(
+        `📸 Snapshot saved: ${recentCount} articles, ${econHits} econ hits`,
+      );
     } catch (err) {
-      console.error("Cleanup error:", err);
+      console.error("Snapshot error:", err.message);
     }
   },
   60 * 60 * 1000,
-);
+); // every hour
 
 /* ===========================
    PING RENDER
@@ -477,13 +521,16 @@ app.get("/journalists/:id/metrics", requireAuth, async (req, res) => {
 
 let cachedFeed = null;
 let cachedFeedTime = 0;
+let cachedFeedBreaking = false;
 
 /* ===========================
    FEED (Cluster-Aware, Preserves Scoring Logic)
 =========================== */
 
 app.get("/feed", async (req, res) => {
-  if (cachedFeed && Date.now() - cachedFeedTime < 5 * 60 * 1000) {
+  const cacheAge = Date.now() - cachedFeedTime;
+  const cacheLimit = cachedFeedBreaking ? 60 * 1000 : 5 * 60 * 1000;
+  if (cachedFeed && cacheAge < cacheLimit) {
     return res.json(cachedFeed);
   }
 
@@ -553,11 +600,15 @@ app.get("/feed", async (req, res) => {
       .map((c) => ({
         ...c.topArticle,
         clusterCount: c.clusterCount,
+        narrativeLabel: c.topArticle.category || null,
       }))
       .slice(0, 100);
 
     cachedFeed = clusteredFeed;
     cachedFeedTime = Date.now();
+    cachedFeedBreaking = clusteredFeed.some(
+      (a) => (a.ranking_score || 0) >= 70,
+    );
 
     res.json(clusteredFeed);
   } catch (err) {
@@ -686,8 +737,63 @@ function extractGeo(title, articles) {
   };
 }
 
-function normalizeRegionFromText(headline = "", summary = "") {
+function normalizeRegionFromText(headline = "", summary = "", sourceName = "") {
   const text = (headline + " " + (summary || "")).toLowerCase();
+
+  // Source-based region inference — catches local stories that don't name their own country
+  const src = sourceName.toLowerCase();
+  if (
+    /vanguard|premium times|businessday nigeria|day nigeria|citi newsroom/.test(
+      src,
+    )
+  )
+    return "Africa";
+  if (
+    /daily nation|east african|mail.*guardian|ewn|ethiopian monitor|newsday zimbabwe|daily maverick/.test(
+      src,
+    )
+  )
+    return "Africa";
+  if (
+    /dawn pakistan|tribune pakistan|daily star bangladesh|the print/.test(src)
+  )
+    return "Asia";
+  if (
+    /bangkok post|jakarta post|rappler|vnexpress|phnom penh|colombo|my republica/.test(
+      src,
+    )
+  )
+    return "Asia";
+  if (/south china morning|straits times|japan times|korea herald/.test(src))
+    return "Asia";
+  if (
+    /buenos aires|rio times|merco press|agencia brasil|el comercio|el espectador|prensa libre|confidencial|infobae|proceso/.test(
+      src,
+    )
+  )
+    return "Latin America";
+  if (/stuff nz|rnz|nz herald|sbs australia|abc australia/.test(src))
+    return "Oceania";
+  if (
+    /ukrinform|kyiv post|moscow times|baltic times|err.*estonia|lrt.*lithuania|radio prague|civil georgia|trend.*azerbaijan|akipress/.test(
+      src,
+    )
+  )
+    return "Europe";
+  if (
+    /arab news|gulf news|jordan times|daily sabah|kurdistan|rudaw|egypt independent/.test(
+      src,
+    )
+  )
+    return "Middle East";
+  if (
+    /euractiv|euronews|politico europe|swissinfo|ansa italy|emerging europe/.test(
+      src,
+    )
+  )
+    return "Europe";
+  if (/cbc|globe and mail|national post|macleans/.test(src))
+    return "North America";
 
   // Canonical buckets (simple prototype)
   const RULES = [
@@ -1291,6 +1397,10 @@ app.get("/clusters/:slug", async (req, res) => {
   }
 });
 
+const overviewCache = {};
+const overviewCacheTime = {};
+const OVERVIEW_TTL = 2 * 60 * 1000; // 2 minutes per window
+
 /* ===========================
    SIGNALS OVERVIEW (MACRO INTELLIGENCE)
    + Dynamic window support (6h / 24h / 72h)
@@ -1301,6 +1411,14 @@ app.get("/signals/overview", async (req, res) => {
   try {
     // 🟢 Window control (default 24h)
     const windowParam = String(req.query.window || "24h").toLowerCase();
+
+    // Serve from cache if fresh
+    if (
+      overviewCache[windowParam] &&
+      Date.now() - overviewCacheTime[windowParam] < OVERVIEW_TTL
+    ) {
+      return res.json(overviewCache[windowParam]);
+    }
 
     // "Recent" window used for velocity/acceleration
     let recentHours = 24;
@@ -1313,7 +1431,7 @@ app.get("/signals/overview", async (req, res) => {
     const fetchIntervalSQL = `${recentHours * 2} hours`; // 6h->12h, 24h->48h, 72h->144h
 
     const result = await pool.query(`
-      SELECT headline, summary, published_at
+      SELECT headline, summary, published_at, source_name
       FROM candidates
       WHERE status != 'ignored'
       AND published_at > NOW() - INTERVAL '${fetchIntervalSQL}'
@@ -1467,8 +1585,11 @@ app.get("/signals/overview", async (req, res) => {
         clusterRows.map((r) => ({ headline: r.headline })),
       );
 
+      const clusterTitle = clusterRows[0]?.headline || key;
+
       strongClusters.push({
         key,
+        title: clusterTitle,
         recent: c.recent,
         previous: c.previous,
         ratio,
@@ -1492,7 +1613,7 @@ app.get("/signals/overview", async (req, res) => {
 
     // Normalize recent count by window size
     const windowFactor = recentHours / 24; // 24h = 1, 72h = 3
-    const normalizedRecent = totalRecent / windowFactor;
+    const normalizedRecent = Math.min(totalRecent / windowFactor, 50);
 
     const avgRatio =
       strongClusters.length > 0 ? totalRatio / strongClusters.length : 0;
@@ -1502,7 +1623,83 @@ app.get("/signals/overview", async (req, res) => {
       avgRatio * 20 + acceleratingCount * 8 + normalizedRecent * 0.5;
     velocityIndex = Math.round(Math.max(0, Math.min(100, velocityIndex)));
 
-    // Count clusters whose key contains economic keywords
+    // Economic Risk Pulse — scored from full headline/summary content
+    const ECON_HIGH = [
+      "oil price",
+      "crude oil",
+      "brent",
+      "wti",
+      "opec",
+      "interest rate",
+      "rate hike",
+      "rate cut",
+      "federal reserve",
+      "inflation",
+      "recession",
+      "bond yield",
+      "currency crisis",
+      "devaluation",
+      "debt default",
+      "sovereign debt",
+    ];
+    const ECON_MED = [
+      "tariff",
+      "trade war",
+      "sanction",
+      "banking crisis",
+      "market crash",
+      "stock market",
+      "nasdaq",
+      "ftse",
+      "gdp",
+      "energy price",
+      "gas price",
+      "supply chain",
+      "unemployment",
+      "trade deficit",
+      "central bank",
+    ];
+    const CREDIBLE_SOURCES = [
+      "Reuters",
+      "BBC",
+      "Financial Times",
+      "Bloomberg",
+      "Associated Press",
+      "Wall Street Journal",
+    ];
+
+    // Score each article in the already-fetched rows array (no extra DB query)
+    // Window-aware: only count articles within the active window
+    let econRaw = 0;
+    for (const row of rows) {
+      const published = new Date(row.published_at);
+      if (published <= recentWindowAgo) continue; // only score within active window
+      const text = (
+        (row.headline || "") +
+        " " +
+        (row.summary || "")
+      ).toLowerCase();
+      let hit = 0;
+      for (const kw of ECON_HIGH) {
+        if (text.includes(kw)) {
+          hit = 3;
+          break;
+        }
+      }
+      if (!hit)
+        for (const kw of ECON_MED) {
+          if (text.includes(kw)) {
+            hit = 1;
+            break;
+          }
+        }
+      if (hit) {
+        const credBoost = CREDIBLE_SOURCES.includes(row.source_name) ? 1.5 : 1;
+        econRaw += hit * credBoost;
+      }
+    }
+
+    // Keep cluster-level econ acceleration as a secondary signal
     const econClusters = strongClusters.filter((c) =>
       /inflation|rate|trade|tariff|oil|gas|market|bank|sanction|recession|currency|bond|economy/.test(
         c.key,
@@ -1512,10 +1709,11 @@ app.get("/signals/overview", async (req, res) => {
       (c) => c.recent >= 2 && c.recent / (c.previous || 1) >= 2,
     ).length;
 
-    let riskScore = 0;
-    riskScore += econClusters.length * 6; // economic cluster volume
-    riskScore += econAccelerating * 14; // accelerating economic stories
-    riskScore += velocityIndex * 0.25; // small global activity bleed
+    // Normalise to 0-100: article content (max 55) + cluster acceleration (max 45)
+    let riskScore =
+      Math.min(55, econRaw * 1.2) +
+      econAccelerating * 15 +
+      (econClusters.length > 0 ? 5 : 0);
     riskScore = Math.round(Math.max(0, Math.min(100, riskScore)));
 
     // REGION COORDS (kept)
@@ -1705,11 +1903,16 @@ app.get("/signals/overview", async (req, res) => {
       // Simple classification based on keywords
       let label = "General";
 
-      const text = c.key.toLowerCase();
+      const text = (c.title || c.key).toLowerCase();
 
-      if (/war|attack|military|conflict/.test(text)) label = "Geopolitics";
-      else if (/economy|inflation|market|bank/.test(text)) label = "Economy";
-      else if (/ai|tech|technology/.test(text)) label = "Technology";
+      if (/war|attack|military|conflict|missile|troops|ceasefire/.test(text))
+        label = "Geopolitics";
+      else if (/economy|inflation|market|bank|oil|rate|tariff|trade/.test(text))
+        label = "Economy";
+      else if (/ai|tech|technology|cyber|chip|software/.test(text))
+        label = "Technology";
+      else if (/election|vote|president|government|parliament/.test(text))
+        label = "Politics";
 
       if (!narrativeMap[label]) {
         narrativeMap[label] = 0;
@@ -1722,21 +1925,53 @@ app.get("/signals/overview", async (req, res) => {
       .map(([label, score]) => ({ label, score }))
       .sort((a, b) => b.score - a.score);
 
-    res.json({
+    // Find snapshot from ~24h ago for delta comparison
+    const now24 = new Date();
+    const target24h = new Date(now24.getTime() - 24 * 60 * 60 * 1000);
+    const snap24 = overviewSnapshots.find(
+      (s) => Math.abs(s.time - target24h) < 60 * 60 * 1000,
+    );
+
+    const velocityDelta = snap24
+      ? Math.round(
+          ((totalRecent - snap24.velocityProxy) /
+            Math.max(1, snap24.velocityProxy)) *
+            100,
+        )
+      : null;
+
+    const econDelta = snap24
+      ? Math.round(
+          ((econArticleCount - snap24.econProxy) /
+            Math.max(1, snap24.econProxy)) *
+            100,
+        )
+      : null;
+
+    // Save to cache before responding
+    const overviewPayload = {
       window: windowParam,
-      velocityIndex, // legacy
-      stabilizedVelocity, // upgraded velocity
+      velocityIndex,
+      stabilizedVelocity,
       acceleratingCount,
       clusterCount: strongClusters.length,
-      economicRisk: riskScore, // legacy
-      macroRisk, // upgraded macro risk
-      npi, // Narrative Pressure Index
+      economicRisk: riskScore,
+      macroRisk,
+      npi,
       regionalSpread,
       geopoliticalPressure,
       strategicIntensityRanking,
       narrativeSummary,
       narrativeBreakdown,
-    });
+      delta: {
+        velocity: velocityDelta,
+        econ: econDelta,
+      },
+    };
+    overviewCache[windowParam] = overviewPayload;
+    overviewCacheTime[windowParam] = Date.now();
+
+    res.json(overviewPayload);
   } catch (err) {
     console.error("Signals overview error:", err);
     res.status(500).json({ error: "Signals overview failed" });
@@ -2042,12 +2277,12 @@ app.get("/regions", async (req, res) => {
   }
   try {
     const result = await pool.query(`
-      SELECT id, headline, summary, source_name, source_url, published_at, initial_score
+      SELECT id, headline, summary, source_name, source_url, published_at, initial_score, category
       FROM candidates
       WHERE status != 'ignored'
       AND published_at > NOW() - INTERVAL '36 hours'
       ORDER BY initial_score DESC, discovered_at DESC
-      LIMIT 250;
+      LIMIT 800;
     `);
 
     const rows = result.rows || [];
@@ -2056,7 +2291,11 @@ app.get("/regions", async (req, res) => {
     const regionMap = {};
 
     for (const r of rows) {
-      const region = normalizeRegionFromText(r.headline, r.summary);
+      const region = normalizeRegionFromText(
+        r.headline,
+        r.summary,
+        r.source_name,
+      );
 
       if (!regionMap[region]) regionMap[region] = {};
 
@@ -2126,7 +2365,12 @@ app.get("/regions", async (req, res) => {
     });
 
     // Order regions by “importance”
-    regions.sort((a, b) => (b.clusterCount || 0) - (a.clusterCount || 0));
+    regions.sort((a, b) => {
+      // Always push Other to the end
+      if (a.region === "Other") return 1;
+      if (b.region === "Other") return -1;
+      return (b.clusterCount || 0) - (a.clusterCount || 0);
+    });
 
     cachedRegions = regions;
     cachedRegionsTime = Date.now();

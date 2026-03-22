@@ -13,14 +13,84 @@ function normalizeSourceName(name = "") {
   if (n.includes("new york times") || n.includes("nyt"))
     return "New York Times";
   if (n.includes("financial times")) return "Financial Times";
-  if (n.includes("associated press") || n.includes("ap"))
+  if (n.includes("associated press") || n.includes("ap news"))
     return "Associated Press";
   if (n.includes("al jazeera")) return "Al Jazeera";
   if (n.includes("techcrunch")) return "TechCrunch";
   if (n.includes("wired")) return "WIRED";
   if (n.includes("verge")) return "The Verge";
+  if (n.includes("bloomberg")) return "Bloomberg";
+  if (n.includes("washington post")) return "Washington Post";
+  if (n.includes("foreign policy")) return "Foreign Policy";
+  if (n.includes("economist")) return "The Economist";
+  if (n.includes("politico")) return "Politico";
+  if (n.includes("axios")) return "Axios";
+  if (n.includes("npr")) return "NPR";
+  if (n.includes("sky")) return "Sky";
+  if (n.includes("dw")) return "DW";
+  if (n.includes("euronews")) return "Euronews";
+  if (n.includes("france 24")) return "France 24";
+  if (n.includes("al-monitor") || n.includes("al monitor")) return "Al-Monitor";
+  if (n.includes("times of israel")) return "Times of Israel";
+  if (n.includes("jerusalem post")) return "Jerusalem Post";
+  if (n.includes("haaretz")) return "Haaretz";
+  if (n.includes("middle east eye")) return "Middle East Eye";
+  if (n.includes("arab news")) return "Arab News";
+  if (n.includes("dawn")) return "Dawn";
+  if (n.includes("hindu")) return "The Hindu";
+  if (n.includes("economic times")) return "Economic Times India";
+  if (n.includes("bangkok post")) return "Bangkok Post";
+  if (n.includes("south china morning")) return "South China Morning Post";
+  if (n.includes("straits times")) return "The Straits Times";
+  if (n.includes("channel newsasia") || n.includes("cna"))
+    return "Channel NewsAsia";
+  if (n.includes("vnexpress")) return "VnExpress Vietnam";
+  if (n.includes("akipress")) return "AkiPress Central Asia";
+  if (n.includes("stuff")) return "Stuff NZ";
+  if (n.includes("rnz")) return "RNZ New Zealand";
+  if (n.includes("sbs")) return "SBS Australia";
+  if (n.includes("vanguard")) return "Vanguard Nigeria";
+  if (n.includes("premium times")) return "Premium Times (Nigeria)";
+  if (n.includes("daily nation")) return "Daily Nation (Kenya)";
+  if (n.includes("nation africa")) return "Nation Africa";
+  if (n.includes("allafrica")) return "AllAfrica";
+  if (n.includes("agencia brasil")) return "Agencia Brasil";
+  if (n.includes("rio times")) return "Rio Times";
+  if (n.includes("buenos aires")) return "Buenos Aires Herald";
+  if (n.includes("merco")) return "Merco Press";
+  if (n.includes("el comercio")) return "El Comercio Peru";
+  if (n.includes("el pais") || n.includes("el país"))
+    return "El País (English)";
+  if (n.includes("prensa libre")) return "Prensa Libre Guatemala";
+  if (n.includes("confidencial")) return "Confidencial Nicaragua";
+  if (n.includes("national post")) return "National Post";
+  if (n.includes("irish times")) return "Irish Times";
+  if (n.includes("moscow times")) return "Moscow Times";
+  if (n.includes("err")) return "ERR Estonia";
+  if (n.includes("ukrinform")) return "Ukrinform";
+  if (n.includes("civil georgia")) return "Civil Georgia";
+  if (n.includes("trend")) return "Trend Azerbaijan";
+  if (n.includes("evening standard")) return "Evening Standard";
+  if (n.includes("euractiv")) return "Euractiv";
+  if (n.includes("ars technica")) return "Ars Technica";
+  if (n.includes("bleeping")) return "BleepingComputer";
+  if (n.includes("science daily") || n.includes("sciencedaily"))
+    return "ScienceDaily";
+  if (n.includes("mit") && n.includes("review")) return "MIT Review";
+  if (n.includes("diplomat")) return "The Diplomat";
+  if (n.includes("crisis group")) return "Crisis Group";
+  if (n.includes("relief web") || n.includes("reliefweb")) return "Relief Web";
+  if (n.includes("ips")) return "IPS";
+  if (n.includes("egypt independent")) return "Egypt Independent";
+  if (n.includes("daily maverick")) return "Daily Maverick";
+  if (n.includes("business day")) return "Business Day Nigeria";
+  if (n.includes("vanguard")) return "Vanguard Nigeria";
+  if (n.includes("dialogue chino") || n.includes("diálogo chino"))
+    return "Dialogue Chino";
+  if (n.includes("africa report")) return "The Africa Report";
+  if (n.includes("sbs")) return "SBS Australia";
+  if (n.includes("akipress")) return "AkiPress Central Asia";
 
-  // remove common RSS suffixes
   const cleaned = name
     .replace("Top Stories", "")
     .replace("World", "")
@@ -75,19 +145,33 @@ const FEEDS = [
      🌍 CORE GLOBAL BACKBONE (High Credibility / Wire)
   ===================================================== */
 
-  { name: "BBC World", url: "http://feeds.bbci.co.uk/news/world/rss.xml" },
-  { name: "BBC UK", url: "http://feeds.bbci.co.uk/news/uk/rss.xml" },
+  {
+    name: "BBC World",
+    url: "http://feeds.bbci.co.uk/news/world/rss.xml",
+    tier: "global",
+  },
+  {
+    name: "BBC UK",
+    url: "http://feeds.bbci.co.uk/news/uk/rss.xml",
+    tier: "global",
+  },
   {
     name: "Reuters World",
     url: "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
+    tier: "global",
   },
   {
     name: "Reuters Business",
     url: "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
+    tier: "global",
   },
   { name: "Associated Press", url: "https://apnews.com/rss" },
-  { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top" },
-  { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml" },
+  { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top", tier: "global" },
+  {
+    name: "Al Jazeera",
+    url: "https://www.aljazeera.com/xml/rss/all.xml",
+    tier: "global",
+  },
 
   /* =====================================================
      🇺🇸 UNITED STATES
@@ -144,7 +228,11 @@ const FEEDS = [
     name: "The Guardian Technology",
     url: "https://www.theguardian.com/uk/technology/rss",
   },
-  { name: "Financial Times", url: "https://www.ft.com/?format=rss" },
+  {
+    name: "Financial Times",
+    url: "https://www.ft.com/?format=rss",
+    tier: "global",
+  },
   { name: "The Independent", url: "https://www.independent.co.uk/rss" },
   { name: "Evening Standard", url: "https://www.standard.co.uk/rss" },
 
@@ -181,26 +269,65 @@ const FEEDS = [
   {
     name: "AllAfrica",
     url: "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf",
+    tier: "regional",
   },
-  { name: "Daily Nation (Kenya)", url: "https://nation.africa/kenya/rss.xml" },
+  {
+    name: "Daily Nation (Kenya)",
+    url: "https://nation.africa/kenya/rss.xml",
+    tier: "regional",
+  },
   {
     name: "Premium Times (Nigeria)",
     url: "https://www.premiumtimesng.com/feed",
+    tier: "regional",
   },
-  { name: "Mail & Guardian", url: "https://mg.co.za/feed/" },
+  { name: "Mail & Guardian", url: "https://mg.co.za/feed/", tier: "regional" },
   {
     name: "The East African",
     url: "https://www.theeastafrican.co.ke/tea/rss.xml",
+    tier: "regional",
   },
-  { name: "Vanguard Nigeria", url: "https://www.vanguardngr.com/feed/" },
-  { name: "Citi Newsroom Ghana", url: "https://citinewsroom.com/feed/" },
-  { name: "The Citizen Tanzania", url: "https://www.thecitizen.co.tz/feed/" },
-  { name: "New Vision Uganda", url: "https://www.newvision.co.ug/rss" },
-  { name: "Ethiopian Monitor", url: "https://www.ethiopianmonitor.com/feed/" },
-  { name: "EWN South Africa", url: "https://ewn.co.za/RSS" },
-  { name: "NewsDay Zimbabwe", url: "https://www.newsday.co.zw/feed/" },
-  { name: "Daily Maverick (SA)", url: "https://www.dailymaverick.co.za/feed/" },
-  { name: "BusinessDay Nigeria", url: "https://businessday.ng/feed/" },
+  {
+    name: "Vanguard Nigeria",
+    url: "https://www.vanguardngr.com/feed/",
+    tier: "regional",
+  },
+  {
+    name: "Citi Newsroom Ghana",
+    url: "https://citinewsroom.com/feed/",
+    tier: "regional",
+  },
+  {
+    name: "The Citizen Tanzania",
+    url: "https://www.thecitizen.co.tz/feed/",
+    tier: "regional",
+  },
+  {
+    name: "New Vision Uganda",
+    url: "https://www.newvision.co.ug/rss",
+    tier: "regional",
+  },
+  {
+    name: "Ethiopian Monitor",
+    url: "https://www.ethiopianmonitor.com/feed/",
+    tier: "regional",
+  },
+  { name: "EWN South Africa", url: "https://ewn.co.za/RSS", tier: "regional" },
+  {
+    name: "NewsDay Zimbabwe",
+    url: "https://www.newsday.co.zw/feed/",
+    tier: "regional",
+  },
+  {
+    name: "Daily Maverick (SA)",
+    url: "https://www.dailymaverick.co.za/feed/",
+    tier: "regional",
+  },
+  {
+    name: "BusinessDay Nigeria",
+    url: "https://businessday.ng/feed/",
+    tier: "regional",
+  },
 
   /* =====================================================
      🌍 MIDDLE EAST
@@ -332,6 +459,7 @@ const FEEDS = [
   {
     name: "Bloomberg Markets",
     url: "https://feeds.bloomberg.com/markets/news.rss",
+    tier: "global",
   },
   { name: "Nature News", url: "https://www.nature.com/nature.rss" },
   { name: "ScienceDaily", url: "https://www.sciencedaily.com/rss/all.xml" },
@@ -361,7 +489,9 @@ const FEEDS = [
  * Infer a coarse category from headline text
  */
 function inferCategory(headline = "", summary = "", source = "") {
-  const text = (headline + " " + summary + " " + source).toLowerCase();
+  // Only check headline and summary for content classification
+  // Source name is kept separate to avoid geography contamination
+  const text = (headline + " " + summary).toLowerCase();
   const src = source.toLowerCase();
 
   // 🔥 FEED-BASED OVERRIDE
@@ -460,7 +590,12 @@ function computeTimeBoost(pubDate) {
 /**
  * Deterministic explainable scoring
  */
-function computeInitialScore(headline = "", category = "", pubDate = null) {
+function computeInitialScore(
+  headline = "",
+  category = "",
+  pubDate = null,
+  tier = "standard",
+) {
   const text = headline.toLowerCase();
   let score = 0;
 
@@ -484,6 +619,15 @@ function computeInitialScore(headline = "", category = "", pubDate = null) {
     score += 10;
   }
 
+  // Economics
+  if (
+    /(oil|inflation|interest rate|recession|tariff|trade war|sanctions|bond|currency|gdp|opec|federal reserve)/.test(
+      text,
+    )
+  ) {
+    score += 20;
+  }
+
   // Category boost (non generic world)
   if (category && category !== "world") {
     score += 10;
@@ -491,6 +635,22 @@ function computeInitialScore(headline = "", category = "", pubDate = null) {
 
   // Time boost
   score += computeTimeBoost(pubDate);
+
+  // Regional weight — local stories need high urgency to surface globally
+  if (tier === "regional") {
+    const isHighUrgency =
+      /(kill|killed|dead|attack|explosion|coup|flood|earthquake|famine|war|crisis)/.test(
+        text,
+      );
+    if (!isHighUrgency) {
+      score = Math.round(score * 0.55);
+    }
+  }
+
+  // Global tier boost — wire services get authority bonus
+  if (tier === "global") {
+    score += 10;
+  }
 
   return score;
 }
@@ -524,8 +684,39 @@ function extractKeywords(text = "") {
 }
 
 function makeClusterKey(headline = "") {
-  const words = extractKeywords(headline).slice(0, 5);
-  return words.sort().join(" ");
+  if (!headline) return null;
+
+  const text = headline
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(" ")
+    .filter(
+      (word) =>
+        word.length > 3 &&
+        ![
+          "with",
+          "from",
+          "that",
+          "this",
+          "have",
+          "will",
+          "about",
+          "after",
+          "over",
+          "into",
+          "under",
+          "against",
+          "amid",
+          "says",
+          "say",
+          "said",
+          "report",
+          "reports",
+          "update",
+        ].includes(word),
+    );
+
+  return text.slice(0, 5).sort().join("-");
 }
 /* ===========================
    INTERNAL: INGEST ONE FEED
@@ -551,7 +742,12 @@ async function ingestOneFeed(pool, feedConfig) {
 
     const clusterKey = makeClusterKey(headline);
 
-    let initialScore = computeInitialScore(headline, category, pubDate);
+    let initialScore = computeInitialScore(
+      headline,
+      category,
+      pubDate,
+      feedConfig.tier,
+    );
 
     // 🔥 cluster logic (counts similar stories)
 
