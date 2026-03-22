@@ -491,14 +491,7 @@ const FEEDS = [
 function inferCategory(headline = "", summary = "", source = "") {
   // Only check headline and summary for content classification
   // Source name is kept separate to avoid geography contamination
-  const text = (headline + " " + summary).toLowerCase();
-  const src = source.toLowerCase();
-
-  // 🔥 FEED-BASED OVERRIDE
-  if (src.includes("technology")) return "technology";
-  if (src.includes("business")) return "economy";
-  if (src.includes("economics")) return "economy";
-  if (src.includes("politics")) return "politics";
+  const text = (headline + " " + summary).toLowerCase();  
 
   // ==========================
   // ECONOMY / BUSINESS
