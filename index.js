@@ -1899,19 +1899,29 @@ app.get("/signals/overview", async (req, res) => {
     const narrativeMap = {};
 
     strongClusters.forEach((c) => {
-      // Simple classification based on keywords
-      let label = "General";
-
       const text = (c.title || c.key).toLowerCase();
+      let label = "Global";
 
-      if (/war|attack|military|conflict|missile|troops|ceasefire/.test(text))
-        label = "Geopolitics";
-      else if (/economy|inflation|market|bank|oil|rate|tariff|trade/.test(text))
-        label = "Economy";
-      else if (/ai|tech|technology|cyber|chip|software/.test(text))
-        label = "Technology";
-      else if (/election|vote|president|government|parliament/.test(text))
-        label = "Politics";
+      if (
+        /iran|israel|gaza|middle east|lebanon|houthi|hormuz|syria|iraq/.test(
+          text,
+        )
+      )
+        label = "Middle East";
+      else if (
+        /ukraine|russia|nato|europe|poland|germany|france|uk|britain/.test(text)
+      )
+        label = "Europe";
+      else if (
+        /china|taiwan|korea|japan|asia|india|pakistan|beijing/.test(text)
+      )
+        label = "Asia";
+      else if (
+        /trump|us|america|united states|washington|congress|fed/.test(text)
+      )
+        label = "Americas";
+      else if (/africa|nigeria|kenya|ethiopia|sudan|ghana|egypt/.test(text))
+        label = "Africa";
 
       if (!narrativeMap[label]) {
         narrativeMap[label] = 0;
