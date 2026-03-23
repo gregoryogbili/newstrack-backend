@@ -2264,6 +2264,40 @@ app.get("/signals/region/:region", async (req, res) => {
    SERVER
 =========================== */
 
+app.get('/articles/search', async (req, res) => {
+  const sort_by = ['ranking_score','initial_score','published_at'].includes(req.query.sort_by)
+    ? req.query.sort_by : 'ranking_score';
+  const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
+  const hours = parseInt(req.query.hours) || 24;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const category = req.query.category;
+
+  try {
+    const params = [`NOW() - INTERVAL '${hours} hours'`];
+    let categoryClause = '';
+    if (category) {
+      params.push(category);
+      categoryClause = `AND category ILIKE $2`;
+    }
+
+    const result = await pool.query(`
+      SELECT id, headline, summary, source_name, source_url,
+             published_at, initial_score, ranking_score, category, cluster_key
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '${hours} hours'
+      ${category ? `AND category ILIKE '${category}%'` : ''}
+      ORDER BY ${sort_by} ${order}
+      LIMIT ${limit}
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Search error:', err);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
 app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
 });
