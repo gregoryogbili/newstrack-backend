@@ -2264,11 +2264,11 @@ app.get("/signals/region/:region", async (req, res) => {
 =========================== */
 
 app.get("/articles/search", async (req, res) => {
-  const sort_by = ["ranking_score", "initial_score", "published_at"].includes(
+  const sort_by = ["initial_score", "published_at"].includes(
     req.query.sort_by,
   )
     ? req.query.sort_by
-    : "ranking_score";
+    : "initial_score";
   const order = req.query.order === "asc" ? "ASC" : "DESC";
   const hours = parseInt(req.query.hours) || 24;
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -2284,7 +2284,7 @@ app.get("/articles/search", async (req, res) => {
 
     const result = await pool.query(`
       SELECT id, headline, summary, source_name, source_url,
-             published_at, initial_score, ranking_score, category, cluster_key
+             published_at, initial_score, category, cluster_key
       FROM candidates
       WHERE status != 'ignored'
       AND published_at > NOW() - INTERVAL '${hours} hours'
