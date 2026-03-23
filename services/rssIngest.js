@@ -489,76 +489,51 @@ const FEEDS = [
  * Infer a coarse category from headline text
  */
 function inferCategory(headline = "", summary = "", source = "") {
-  // Only check headline and summary for content classification
-  // Source name is kept separate to avoid geography contamination
-  const text = (headline + " " + summary).toLowerCase();  
+  const text = (headline + " " + summary).toLowerCase();
 
-  // ==========================
-  // ECONOMY / BUSINESS
-  // ==========================
   if (
-    /(economy|economic|inflation|gdp|recession|stocks?|markets?|bank|finance|business|earnings|profit|oil prices?|trade|tariffs?|interest rates?)/.test(
+    /(iran|israel|gaza|lebanon|houthi|hormuz|syria|iraq|saudi|gulf|middle east|persian|tehran|jerusalem|beirut)/.test(
       text,
     )
-  ) {
-    return "economy";
-  }
+  )
+    return "Middle East";
 
-  // ==========================
-  // TECHNOLOGY
-  // ==========================
   if (
-    /(tech|technology|ai|artificial intelligence|robot|software|hardware|chip|cyber|hacker|data breach|google|microsoft|apple|meta|tesla)/.test(
+    /(ukraine|russia|moscow|kyiv|nato|poland|germany|france|britain|uk|europe|european|berlin|paris|london)/.test(
       text,
     )
-  ) {
-    return "technology";
-  }
+  )
+    return "Europe";
 
-  // ==========================
-  // DOMESTIC POLITICS
-  // ==========================
   if (
-    /(election|president|prime minister|pm|minister|senate|congress|parliament|government|policy|bill|lawmakers?)/.test(
+    /(china|taiwan|korea|japan|asia|india|pakistan|beijing|tokyo|seoul|hong kong|south china|xi jinping)/.test(
       text,
     )
-  ) {
-    return "politics";
-  }
+  )
+    return "Asia";
 
-  // ==========================
-  // GEOPOLITICS / WAR
-  // ==========================
   if (
-    /(ukraine|russia|china|nato|israel|gaza|iran|middle east|taiwan|military|war|conflict)/.test(
+    /(trump|us |u\.s\.|america|united states|washington|congress|fed |federal reserve|wall street|pentagon|white house)/.test(
       text,
     )
-  ) {
-    return "world";
-  }
+  )
+    return "Americas";
 
-  // ==========================
-  // LAW / CRIME
-  // ==========================
   if (
-    /(court|trial|arrest|charged|sentence|convicted|crime|fraud)/.test(text)
-  ) {
-    return "politics";
-  }
-
-  // ==========================
-  // DISASTERS
-  // ==========================
-  if (
-    /(storm|flood|earthquake|wildfire|hurricane|typhoon|explosion|plane crash|landslide)/.test(
+    /(africa|nigeria|kenya|ethiopia|sudan|ghana|egypt|cairo|south africa|sahel|somalia)/.test(
       text,
     )
-  ) {
-    return "world";
-  }
+  )
+    return "Africa";
 
-  // Default
-  return "world";
+  if (
+    /(un |united nations|global|worldwide|imf|world bank|g7|g20|wto|international)/.test(
+      text,
+    )
+  )
+    return "Global";
+
+  return "World";
 }
 
 /**
