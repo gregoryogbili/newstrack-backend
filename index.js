@@ -1791,6 +1791,13 @@ app.get("/signals/overview", async (req, res) => {
 
       const clusterWeight = volumeW * accelW * divW;
 
+      // Determine the cluster's primary region
+      const clusterRegion = normalizeRegionFromText(
+        clusterRows[0]?.headline || "",
+        clusterRows[0]?.summary || "",
+        clusterRows[0]?.source_name || "",
+      );
+
       for (const row of clusterRows) {
         const headline = String(row.headline || "").toLowerCase();
 
@@ -1800,6 +1807,11 @@ app.get("/signals/overview", async (req, res) => {
           const escaped = place.replace(/\s+/g, "\\s+");
           const regex = new RegExp(`\\b${escaped}\\b`, "i");
           if (!regex.test(headline)) continue;
+
+          // Gate: only score countries that belong to the cluster's region
+          const placeRegion = normalizeRegionFromText(place, "", "");
+          if (placeRegion !== "Other" && placeRegion !== clusterRegion)
+            continue;
 
           const formatted = CANON[place] || titleCase(place);
 
