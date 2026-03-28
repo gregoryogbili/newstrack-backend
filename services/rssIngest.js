@@ -157,15 +157,15 @@ const FEEDS = [
   },
   {
     name: "Reuters World",
-    url: "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
+    url: "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&ceid=US:en&hl=en-US&gl=US",
     tier: "global",
   },
   {
     name: "Reuters Business",
-    url: "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
+    url: "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com+business&ceid=US:en&hl=en-US&gl=US",
     tier: "global",
   },
-  { name: "Associated Press", url: "https://apnews.com/rss" },
+  { name: "Associated Press", url: "https://news.google.com/rss/search?q=when:24h+allinurl:apnews.com&ceid=US:en&hl=en-US&gl=US" },
   { name: "DW Top", url: "https://rss.dw.com/rdf/rss-en-top", tier: "global" },
   {
     name: "Al Jazeera",
@@ -195,7 +195,7 @@ const FEEDS = [
     name: "Washington Post World",
     url: "https://feeds.washingtonpost.com/rss/world",
   },
-  { name: "Politico US", url: "https://www.politico.com/rss/politics08.xml" },
+  { name: "Politico US", url: "https://www.politico.com/rss/politicopicks.xml" },
   { name: "Axios", url: "https://api.axios.com/feed/" },
   { name: "NPR World", url: "https://feeds.npr.org/1004/rss.xml" },
 
@@ -203,11 +203,8 @@ const FEEDS = [
      North America
   ===================================================== */
 
-  { name: "CBC News", url: "https://www.cbc.ca/cmlink/rss-topstories" },
-  {
-    name: "Globe and Mail",
-    url: "https://www.theglobeandmail.com/arc/outboundfeeds/rss/",
-  },
+  { name: "CBC News", url: "https://www.cbc.ca/webfeed/rss/rss-topstories" },
+  { name: "Globe and Mail", url: "https://globalnews.ca/feed/" },
   { name: "National Post", url: "https://nationalpost.com/feed/" },
   { name: "Macleans", url: "https://www.macleans.ca/feed/" },
 
