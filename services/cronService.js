@@ -132,7 +132,7 @@ export function startCron(pool) {
         FROM candidates
         WHERE cluster_key = $1
         AND status != 'ignored'
-        AND published_at > NOW() - INTERVAL '12 hours'
+        AND published_at > NOW() - INTERVAL '48 hours'
         LIMIT 10
       `,
           [cluster.cluster_key],
