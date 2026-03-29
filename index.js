@@ -1969,6 +1969,113 @@ app.get("/signals/overview", async (req, res) => {
         )
       : null;
 
+    // ── Narrative Watch: find stories absent from major blocs ──
+    const WATCH_BLOC_MAP = {
+      BBC: "Western",
+      CNN: "Western",
+      NBC: "Western",
+      ABC: "Western",
+      "New York Times": "Western",
+      "Washington Post": "Western",
+      Guardian: "Western",
+      "Financial Times": "Western",
+      Reuters: "Western",
+      "Associated Press": "Western",
+      Sky: "Western",
+      Independent: "Western",
+      Axios: "Western",
+      NPR: "Western",
+      DW: "Western",
+      "Al Jazeera": "Gulf",
+      "Arab News": "Gulf",
+      "Gulf News": "Gulf",
+      "Times of Israel": "Gulf",
+      "Jerusalem Post": "Gulf",
+      "Al-Monitor": "Gulf",
+      RT: "Eastern",
+      "Moscow Times": "Eastern",
+      Xinhua: "Eastern",
+      "South China Morning Post": "Eastern",
+      Ukrinform: "Eastern",
+      "The Hindu": "Asian",
+      Dawn: "Asian",
+      "Bangkok Post": "Asian",
+      "Japan Times": "Asian",
+      "Korea Herald": "Asian",
+      AllAfrica: "African",
+      "Vanguard Nigeria": "African",
+      "Daily Nation (Kenya)": "African",
+      "Premium Times (Nigeria)": "African",
+    };
+
+    const narrativeWatch = [];
+    const clusterBlocMap = new Map();
+
+    for (const row of rows) {
+      const published = new Date(row.published_at);
+      if (published <= recentWindowAgo) continue;
+      const key = makeClusterKey(row.headline || "");
+      if (!key) continue;
+      const bloc = WATCH_BLOC_MAP[row.source_name] || null;
+      if (!bloc) continue;
+      if (!clusterBlocMap.has(key))
+        clusterBlocMap.set(key, { title: row.headline, blocs: {} });
+      const entry = clusterBlocMap.get(key);
+      entry.blocs[bloc] = (entry.blocs[bloc] || 0) + 1;
+    }
+
+    for (const [key, entry] of clusterBlocMap.entries()) {
+      const blocs = entry.blocs;
+      const total = Object.values(blocs).reduce((s, v) => s + v, 0);
+      if (total < 3) continue;
+      const dominantBloc = Object.entries(blocs).sort((a, b) => b[1] - a[1])[0];
+      const missingBlocs = [
+        "Western",
+        "Gulf",
+        "Eastern",
+        "Asian",
+        "African",
+      ].filter((b) => !blocs[b]);
+      if (dominantBloc[1] >= 3 && missingBlocs.length >= 2) {
+        narrativeWatch.push({
+          title: entry.title,
+          dominantBloc: dominantBloc[0],
+          dominantCount: dominantBloc[1],
+          missingBlocs,
+          suppressionScore: Math.round((missingBlocs.length / 5) * 100),
+        });
+      }
+    }
+
+    narrativeWatch.sort((a, b) => b.suppressionScore - a.suppressionScore);
+    const narrativeWatchTop = narrativeWatch.slice(0, 5);
+
+    // Global Tension Index
+    const globalTensionIndex = Math.round(
+      Math.min(
+        100,
+        velocityIndex * 0.3 +
+          npi * 0.3 +
+          riskScore * 0.2 +
+          acceleratingCount * 4,
+      ),
+    );
+
+    // Source Trust Layer — top outlets by volume + category focus
+    const sourceTrustMap = {};
+    for (const row of rows) {
+      const published = new Date(row.published_at);
+      if (published <= recentWindowAgo) continue;
+      const src = row.source_name;
+      if (!src) continue;
+      if (!sourceTrustMap[src]) sourceTrustMap[src] = { count: 0 };
+      sourceTrustMap[src].count++;
+    }
+    const sourceTrust = Object.entries(sourceTrustMap)
+      .map(([name, d]) => ({ name, count: d.count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     // Save to cache before responding
     const overviewPayload = {
       window: windowParam,
@@ -1979,11 +2086,14 @@ app.get("/signals/overview", async (req, res) => {
       economicRisk: riskScore,
       macroRisk,
       npi,
+      globalTensionIndex,
       regionalSpread,
       geopoliticalPressure,
       strategicIntensityRanking,
       narrativeSummary,
       narrativeBreakdown,
+      narrativeWatch: narrativeWatchTop,
+      sourceTrust,
       delta: {
         velocity: velocityDelta,
         econ: econDelta,
