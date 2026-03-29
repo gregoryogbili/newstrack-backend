@@ -113,8 +113,16 @@ export function startCron(pool) {
       console.log("📡 Querying clusters...");
       // 1. Get top 5 clusters from last 6 hours
       const clusters = await pool.query(`
-      SELECT cluster_key, top_headline, article_count, avg_score
-      FROM cluster_snapshots
+      SELECT cluster_key, 
+        MIN(headline) as top_headline,
+        COUNT(*) as article_count,
+        ROUND(AVG(initial_score)) as avg_score
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '48 hours'
+      AND cluster_key IS NOT NULL
+      GROUP BY cluster_key
+      HAVING COUNT(*) >= 2
       ORDER BY avg_score DESC, article_count DESC
       LIMIT 5
     `);
