@@ -172,6 +172,8 @@ ${articleText}
 
 Write only the news report, nothing else.`;
 
+        console.log(`🤙 Calling Groq...`);
+
         // 4. Call Groq
         const groqRes = await fetch(
           "https://api.groq.com/openai/v1/chat/completions",
@@ -192,6 +194,10 @@ Write only the news report, nothing else.`;
 
         const groqData = await groqRes.json();
         const report = groqData?.choices?.[0]?.message?.content?.trim();
+
+        console.log(
+          `✉️ Groq response: ${JSON.stringify(groqData).slice(0, 200)}`,
+        );
 
         if (!report) continue;
 
