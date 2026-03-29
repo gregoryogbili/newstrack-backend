@@ -1780,7 +1780,7 @@ app.get("/signals/overview", async (req, res) => {
     for (const c of strongClusters) {
       const isAccelerating = (c.ratio || 0) >= 2 && (c.recent || 0) >= 2;
       const isDivergent = (c.divergenceScore || 0) >= 60;
-      if (!isAccelerating && !isDivergent) continue;
+      if (!isAccelerating) continue;
 
       const clusterRows = rowsByCluster.get(c.key) || [];
       if (clusterRows.length === 0) continue;
