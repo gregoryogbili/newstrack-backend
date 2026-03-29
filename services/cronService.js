@@ -107,74 +107,114 @@ export function startCron(pool) {
   });
 
   // ─── AI LIVE POSTS: every 6 hours ────────────────────────────────────────
-  cron.schedule("*/2 * * * *", async () => {
-    console.log("🤖 Generating AI live posts...");
+  cron.schedule("0 */6 * * *", async () => {
+    console.log("🤖 Generating AI intelligence posts...");
     try {
-      console.log("📡 Querying clusters...");
-      const clusterStart = Date.now();
-      // 1. Get top 5 clusters from last 6 hours
+      // 1. Get top cluster per category for topic diversity
       const clusters = await pool.query(`
-      SELECT cluster_key, 
+      SELECT DISTINCT ON (category) cluster_key,
         MIN(headline) as top_headline,
+        category,
         COUNT(*) as article_count,
         ROUND(AVG(initial_score)) as avg_score
       FROM candidates
       WHERE status != 'ignored'
       AND published_at > NOW() - INTERVAL '48 hours'
       AND cluster_key IS NOT NULL
-      GROUP BY cluster_key
+      AND category IS NOT NULL
+      GROUP BY cluster_key, category
       HAVING COUNT(*) >= 2
-      ORDER BY avg_score DESC, article_count DESC
+      ORDER BY category, avg_score DESC
       LIMIT 5
     `);
 
-      console.log(
-        `📦 Clusters query took ${Date.now() - clusterStart}ms, found ${clusters.rows.length} clusters`,
-      );
       if (!clusters.rows.length) {
         console.log("⚠️ No clusters found for AI posts");
         return;
       }
 
+      // 2. Source bloc mapping for narrative context
+      const BLOC_MAP = {
+        BBC: "Western/UK",
+        CNN: "Western/US",
+        NBC: "Western/US",
+        ABC: "Western/US",
+        "New York Times": "Western/US",
+        "Washington Post": "Western/US",
+        Guardian: "Western/UK",
+        "Financial Times": "Western/UK",
+        Reuters: "Western/Wire",
+        "Associated Press": "Western/Wire",
+        Sky: "Western/UK",
+        "Al Jazeera": "Gulf/Qatar",
+        "Arab News": "Gulf/Saudi",
+        "Gulf News": "Gulf/UAE",
+        "Times of Israel": "Israeli",
+        "Jerusalem Post": "Israeli",
+        "Al-Monitor": "Middle East Independent",
+        RT: "Russian State",
+        "Moscow Times": "Russian Independent",
+        Ukrinform: "Ukrainian State",
+        "Kyiv Post": "Ukrainian Independent",
+        Xinhua: "Chinese State",
+        "South China Morning Post": "Chinese/HK",
+        "The Hindu": "Indian",
+        Dawn: "Pakistani",
+        Vanguard: "African/Nigeria",
+        AllAfrica: "African",
+        "Daily Nation": "African/Kenya",
+        "Al Jazeera": "Gulf/Qatar",
+        TechCrunch: "Tech/US",
+        "The Verge": "Tech/US",
+        Bloomberg: "Financial/US",
+        "Foreign Policy": "US Policy",
+        "The Diplomat": "Asia Policy",
+      };
+
       for (const cluster of clusters.rows) {
-        console.log(`🔍 Processing cluster: ${cluster.cluster_key}`);
-        console.log(`📰 Fetching articles...`);
-        // 2. Get all articles in this cluster
+        // 3. Fetch articles with source names
         const articles = await pool.query(
-          `
-        SELECT headline, summary, source_name
-        FROM candidates
-        WHERE cluster_key = $1
-        AND status != 'ignored'
-        AND published_at > NOW() - INTERVAL '48 hours'
-        LIMIT 10
-      `,
+          `SELECT headline, summary, source_name
+         FROM candidates
+         WHERE cluster_key = $1
+         AND status != 'ignored'
+         AND published_at > NOW() - INTERVAL '48 hours'
+         LIMIT 10`,
           [cluster.cluster_key],
         );
 
-        console.log(`📰 Articles fetched: ${articles.rows.length}`);
-        if (!articles.rows.length) {
-          console.log(
-            `⚠️ No articles found for cluster: ${cluster.cluster_key}`,
-          );
-          continue;
-        }
+        if (!articles.rows.length) continue;
 
-        // 3. Build prompt
+        // 4. Build source-tagged article text with bloc labels
         const articleText = articles.rows
-          .map((a) => `[${a.source_name}] ${a.headline}. ${a.summary || ""}`)
-          .join("\n");
+          .map((a) => {
+            const bloc = BLOC_MAP[a.source_name] || "Independent";
+            return `[${a.source_name} — ${bloc}]\nHeadline: ${a.headline}\nSummary: ${a.summary || "No summary available"}`;
+          })
+          .join("\n\n");
 
-        const prompt = `You are a professional news journalist. Based on the following headlines and summaries from multiple sources covering the same story, write a concise 3-sentence news report in plain English. Be factual, neutral and clear. Do not mention source names in the report.
+        // 5. Intelligence prompt
+        const prompt = `You are a senior geopolitical intelligence analyst with deep expertise in international relations, military strategy, economics, and global media analysis. You have comprehensive knowledge of history, geopolitics, and current affairs up to your training cutoff. Use both the provided articles AND your own knowledge.
 
-SOURCES:
+Analyse the following news coverage of a single event from multiple global media sources. Each source is tagged with its geopolitical bloc/alignment.
+
+Your task is to produce a structured intelligence brief. Return ONLY a valid JSON object with these exact fields — no markdown, no code blocks, no preamble:
+
+{
+  "headline": "A precise, factual one-line event summary",
+  "strategic_sentiment": "One of exactly: Escalatory | Diplomatic | Defensive | Threatening | Neutral | Economic",
+  "intelligence_brief": "4-5 sentences of expert analyst-level insight. Cover: what happened, the strategic significance, historical context or precedent, likely implications for key actors, and what this means for the broader regional or global picture",
+  "divergence": "How different media blocs are framing this event differently — note specific contrasts between Western, Eastern, Gulf, African or other perspectives. If all sources align, write null",
+  "who_benefits": "Which actor or actors benefit most from this situation or from the dominant narrative being pushed, and why",
+  "watch_signal": "The single most important indicator to monitor in the next 24-72 hours that will signal how this situation develops"
+}
+
+NEWS SOURCES:
 ${articleText}
 
-Write only the news report, nothing else.`;
+Return only the JSON object.`;
 
-        console.log(`🤙 Calling Groq...`);
-
-        // 4. Call Groq
+        // 6. Call Groq
         const groqRes = await fetch(
           "https://api.groq.com/openai/v1/chat/completions",
           {
@@ -186,46 +226,52 @@ Write only the news report, nothing else.`;
             body: JSON.stringify({
               model: "llama-3.3-70b-versatile",
               messages: [{ role: "user", content: prompt }],
-              max_tokens: 300,
-              temperature: 0.4,
+              max_tokens: 1000,
+              temperature: 0.3,
             }),
           },
         );
 
         const groqData = await groqRes.json();
-        const report = groqData?.choices?.[0]?.message?.content?.trim();
+        const raw = groqData?.choices?.[0]?.message?.content?.trim();
+        if (!raw) continue;
 
-        console.log(
-          `✉️ Groq response: ${JSON.stringify(groqData).slice(0, 200)}`,
-        );
+        // 7. Parse JSON response
+        let intelligence;
+        try {
+          intelligence = JSON.parse(raw.replace(/```json|```/g, "").trim());
+        } catch {
+          console.warn(
+            `⚠️ Failed to parse JSON for cluster: ${cluster.cluster_key}`,
+          );
+          continue;
+        }
 
-        if (!report) continue;
-
-        // 5. Save as post — check if one already exists for this cluster today
+        // 8. Check for duplicate
         const existing = await pool.query(
-          `
-        SELECT id FROM posts
-        WHERE source_name = 'NewsTrac AI'
-        AND headline = $1
-        AND created_at > NOW() - INTERVAL '6 hours'
-      `,
-          [cluster.top_headline],
+          `SELECT id FROM posts
+         WHERE source_name = 'NewsTrac AI'
+         AND headline = $1
+         AND created_at > NOW() - INTERVAL '6 hours'`,
+          [intelligence.headline || cluster.top_headline],
         );
 
         if (existing.rows.length) continue;
 
+        // 9. Store intelligence as JSON in description
         await pool.query(
-          `
-        INSERT INTO posts (headline, description, author_id, source_name, is_external, views)
-        VALUES ($1, $2, 1, 'NewsTrac AI', false, 0)
-      `,
-          [cluster.top_headline, report],
+          `INSERT INTO posts (headline, description, author_id, source_name, is_external, views)
+         VALUES ($1, $2, 1, 'NewsTrac AI', false, 0)`,
+          [
+            intelligence.headline || cluster.top_headline,
+            JSON.stringify(intelligence),
+          ],
         );
 
-        console.log(`✅ AI post created: ${cluster.top_headline}`);
+        console.log(`✅ Intelligence post created: ${intelligence.headline}`);
       }
     } catch (err) {
-      console.error("❌ AI live posts failed:", err.message, err.stack);
+      console.error("❌ AI intelligence posts failed:", err.message, err.stack);
     }
   });
 }
