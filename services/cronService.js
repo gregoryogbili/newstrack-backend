@@ -91,6 +91,13 @@ export function startCron(pool) {
         WHERE snapshot_at < NOW() - INTERVAL '48 hours'
       `);
 
+      // 5. Delete AI posts older than 7 days
+      await pool.query(`
+        DELETE FROM posts
+        WHERE source_name = 'NewsTrac AI'
+        AND created_at < NOW() - INTERVAL '7 days'
+      `);
+
       console.log(
         `🧹 Cleanup: ${ignored.rowCount} ignored, ${collapsed.rowCount} collapsed, ${old.rowCount} old wiped`,
       );
