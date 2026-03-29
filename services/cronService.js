@@ -107,7 +107,7 @@ export function startCron(pool) {
   });
 
   // ─── AI LIVE POSTS: every 6 hours ────────────────────────────────────────
-  cron.schedule("0 */6 * * *", async () => {
+  cron.schedule("*/2 * * * *", async () => {
     console.log("🤖 Generating AI live posts...");
     try {
       console.log("📡 Querying clusters...");
