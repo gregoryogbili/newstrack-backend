@@ -137,6 +137,7 @@ export function startCron(pool) {
       }
 
       for (const cluster of clusters.rows) {
+        console.log(`🔍 Processing cluster: ${cluster.cluster_key}`);
         // 2. Get all articles in this cluster
         const articles = await pool.query(
           `
