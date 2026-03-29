@@ -138,6 +138,7 @@ export function startCron(pool) {
 
       for (const cluster of clusters.rows) {
         console.log(`🔍 Processing cluster: ${cluster.cluster_key}`);
+        console.log(`📰 Fetching articles...`);
         // 2. Get all articles in this cluster
         const articles = await pool.query(
           `
@@ -151,6 +152,7 @@ export function startCron(pool) {
           [cluster.cluster_key],
         );
 
+        console.log(`📰 Articles fetched: ${articles.rows.length}`);
         if (!articles.rows.length) {
           console.log(
             `⚠️ No articles found for cluster: ${cluster.cluster_key}`,
