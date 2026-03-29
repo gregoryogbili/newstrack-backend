@@ -111,6 +111,7 @@ export function startCron(pool) {
     console.log("🤖 Generating AI live posts...");
     try {
       console.log("📡 Querying clusters...");
+      const clusterStart = Date.now();
       // 1. Get top 5 clusters from last 6 hours
       const clusters = await pool.query(`
       SELECT cluster_key, 
@@ -127,6 +128,9 @@ export function startCron(pool) {
       LIMIT 5
     `);
 
+      console.log(
+        `📦 Clusters query took ${Date.now() - clusterStart}ms, found ${clusters.rows.length} clusters`,
+      );
       if (!clusters.rows.length) {
         console.log("⚠️ No clusters found for AI posts");
         return;
