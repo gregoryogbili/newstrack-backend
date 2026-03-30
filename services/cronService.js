@@ -251,9 +251,9 @@ Return only the JSON object.`;
         const existing = await pool.query(
           `SELECT id FROM posts
          WHERE source_name = 'NewsTrac AI'
-         AND headline = $1
-         AND created_at > NOW() - INTERVAL '6 hours'`,
-          [intelligence.headline || cluster.top_headline],
+         AND description LIKE $1
+         AND created_at > NOW() - INTERVAL '24 hours'`,
+          [`%${cluster.cluster_key}%`],
         );
 
         if (existing.rows.length) continue;
@@ -264,7 +264,7 @@ Return only the JSON object.`;
          VALUES ($1, $2, 1, 'NewsTrac AI', false, 0)`,
           [
             intelligence.headline || cluster.top_headline,
-            JSON.stringify(intelligence),
+            JSON.stringify({ ...intelligence, cluster_key: cluster.cluster_key }),
           ],
         );
 
