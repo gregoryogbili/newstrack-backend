@@ -95,7 +95,7 @@ export function startCron(pool) {
       await pool.query(`
         DELETE FROM posts
         WHERE source_name = 'NewsTrac AI'
-        AND created_at < NOW() - INTERVAL '7 days'
+        AND created_at < NOW() - INTERVAL '24 hours'
       `);
 
       console.log(
