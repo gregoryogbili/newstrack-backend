@@ -1486,7 +1486,8 @@ app.get("/signals/overview", async (req, res) => {
       "colombia",
       "peru",
       // Europe
-      "uk",
+      "united kingdom",
+      "britain",
       "england",
       "france",
       "germany",
@@ -1497,6 +1498,7 @@ app.get("/signals/overview", async (req, res) => {
       // Middle East
       "israel",
       "iran",
+      "saudi arabia",
       "saudi",
       // Asia
       "china",
@@ -1521,8 +1523,11 @@ app.get("/signals/overview", async (req, res) => {
       usa: "United States",
       "united states": "United States",
       uk: "UK",
+      "united kingdom": "UK",
+      britain: "UK",
       england: "UK",
       "south africa": "South Africa",
+      "saudi arabia": "Saudi Arabia",
     };
 
     // Count regions + compute recent/previous per cluster
