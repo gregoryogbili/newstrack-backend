@@ -295,7 +295,8 @@ setInterval(
 
 app.get("/posts", async (req, res) => {
   const result = await pool.query(`
-    SELECT p.*, u.name AS author_name
+    SELECT p.id, p.headline, p.description, p.views, p.created_at,
+           p.region, p.country, p.source_name, u.name AS author_name
     FROM posts p
     LEFT JOIN users u ON p.author_id = u.id
     ORDER BY p.created_at DESC
@@ -309,7 +310,7 @@ app.get("/posts", async (req, res) => {
 
 app.post("/journalists/:id/posts", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { headline, content } = req.body;
+  const { headline, content, region, country } = req.body;
 
   if (!headline || !content) {
     return res.status(400).json({ error: "Headline and content required" });
@@ -322,11 +323,11 @@ app.post("/journalists/:id/posts", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `
-      INSERT INTO posts (headline, description, author_id, views, created_at)
-      VALUES ($1, $2, $3, 0, NOW())
+      INSERT INTO posts (headline, description, author_id, views, created_at, region, country)
+      VALUES ($1, $2, $3, 0, NOW(), $4, $5)
       RETURNING *
       `,
-      [headline.trim(), content.trim(), id],
+      [headline.trim(), content.trim(), id, region || "Global", country?.trim() || ""],
     );
 
     res.status(201).json(result.rows[0]);
@@ -350,7 +351,7 @@ app.get("/journalists/:id/posts", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `
-      SELECT id, headline, description AS content, views, created_at
+      SELECT id, headline, description AS content, views, created_at, region, country
       FROM posts
       WHERE author_id = $1
       ORDER BY created_at DESC
@@ -362,6 +363,35 @@ app.get("/journalists/:id/posts", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Get journalist posts error:", err);
     res.status(500).json({ error: "Failed to load posts" });
+  }
+});
+
+/* ===========================
+   DELETE POST (Journalist)
+=========================== */
+
+app.delete("/journalists/:id/posts/:postId", requireAuth, async (req, res) => {
+  const { id, postId } = req.params;
+
+  if (String(req.user.id) !== String(id)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const check = await pool.query(
+      `SELECT id FROM posts WHERE id = $1 AND author_id = $2`,
+      [postId, id]
+    );
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: "Post not found or not yours" });
+    }
+
+    await pool.query(`DELETE FROM posts WHERE id = $1`, [postId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete post error:", err);
+    res.status(500).json({ error: "Failed to delete post" });
   }
 });
 
