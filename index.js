@@ -327,7 +327,13 @@ app.post("/journalists/:id/posts", requireAuth, async (req, res) => {
       VALUES ($1, $2, $3, 0, NOW(), $4, $5)
       RETURNING *
       `,
-      [headline.trim(), content.trim(), id, region || "Global", country?.trim() || ""],
+      [
+        headline.trim(),
+        content.trim(),
+        id,
+        region || "Global",
+        country?.trim() || "",
+      ],
     );
 
     res.status(201).json(result.rows[0]);
@@ -380,7 +386,7 @@ app.delete("/journalists/:id/posts/:postId", requireAuth, async (req, res) => {
   try {
     const check = await pool.query(
       `SELECT id FROM posts WHERE id = $1 AND author_id = $2`,
-      [postId, id]
+      [postId, id],
     );
 
     if (check.rows.length === 0) {
@@ -2076,6 +2082,8 @@ app.get("/signals/overview", async (req, res) => {
             100,
         )
       : null;
+
+    const econArticleCount = econClusters.length;
 
     const econDelta = snap24
       ? Math.round(
