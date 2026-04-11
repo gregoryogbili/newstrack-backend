@@ -299,9 +299,138 @@ app.get("/posts", async (req, res) => {
            p.region, p.country, p.source_name, u.name AS author_name
     FROM posts p
     LEFT JOIN users u ON p.author_id = u.id
+    WHERE p.created_at > NOW() - INTERVAL '24 hours'
     ORDER BY p.created_at DESC
   `);
   res.json(result.rows);
+});
+
+app.post("/posts/generate", async (req, res) => {
+  try {
+    // Get top 6 clusters — same query the hero split uses
+    const clusters = await pool.query(`
+      SELECT DISTINCT ON (category) cluster_key,
+        MIN(headline) as top_headline,
+        category,
+        COUNT(*) as article_count,
+        ROUND(AVG(initial_score)) as avg_score
+      FROM candidates
+      WHERE status != 'ignored'
+      AND published_at > NOW() - INTERVAL '24 hours'
+      AND cluster_key IS NOT NULL
+      AND category IS NOT NULL
+      GROUP BY cluster_key, category
+      HAVING COUNT(*) >= 2
+      ORDER BY category, avg_score DESC
+      LIMIT 6
+    `);
+
+    if (!clusters.rows.length) {
+      return res.json({ generated: 0, message: "No active clusters" });
+    }
+
+    // Wipe existing AI posts so stale ones don't persist
+    await pool.query(`DELETE FROM posts WHERE source_name = 'NewsTrac AI'`);
+
+    const BLOC_MAP = {
+      BBC: "Western/UK",
+      CNN: "Western/US",
+      NBC: "Western/US",
+      "New York Times": "Western/US",
+      "Washington Post": "Western/US",
+      Guardian: "Western/UK",
+      "Financial Times": "Western/UK",
+      Reuters: "Western/Wire",
+      "Associated Press": "Western/Wire",
+      "Al Jazeera": "Gulf/Qatar",
+      RT: "Russian State",
+      Xinhua: "Chinese State",
+      Bloomberg: "Financial/US",
+    };
+
+    let generated = 0;
+
+    for (const cluster of clusters.rows) {
+      const articles = await pool.query(
+        `SELECT headline, summary, source_name
+         FROM candidates
+         WHERE cluster_key = $1
+         AND status != 'ignored'
+         AND published_at > NOW() - INTERVAL '24 hours'
+         LIMIT 10`,
+        [cluster.cluster_key],
+      );
+
+      if (!articles.rows.length) continue;
+
+      const articleText = articles.rows
+        .map((a) => {
+          const bloc = BLOC_MAP[a.source_name] || "Independent";
+          return `[${a.source_name} — ${bloc}]\nHeadline: ${a.headline}\nSummary: ${a.summary || "No summary"}`;
+        })
+        .join("\n\n");
+
+      const prompt = `You are a senior geopolitical intelligence analyst. Analyse the following news coverage and return ONLY a valid JSON object with these exact fields, no markdown:
+
+{
+  "headline": "A precise factual one-line summary",
+  "strategic_sentiment": "One of: Escalatory | Diplomatic | Defensive | Threatening | Neutral | Economic",
+  "intelligence_brief": "4-5 sentences of analyst-level insight covering what happened, strategic significance, historical context, and implications",
+  "divergence": "How different media blocs frame this differently. Write null if all sources align",
+  "who_benefits": "Which actor benefits most and why",
+  "watch_signal": "The single most important indicator to watch in the next 24-72 hours"
+}
+
+NEWS SOURCES:
+${articleText}
+
+Return only the JSON object.`;
+
+      const groqRes = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 1000,
+            temperature: 0.3,
+          }),
+        },
+      );
+
+      const groqData = await groqRes.json();
+      const raw = groqData?.choices?.[0]?.message?.content?.trim();
+      if (!raw) continue;
+
+      let intelligence;
+      try {
+        intelligence = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      } catch {
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO posts (headline, description, author_id, source_name, is_external, views)
+         VALUES ($1, $2, 1, 'NewsTrac AI', false, 0)`,
+        [
+          intelligence.headline || cluster.top_headline,
+          JSON.stringify({ ...intelligence, cluster_key: cluster.cluster_key }),
+        ],
+      );
+
+      generated++;
+    }
+
+    res.json({ generated });
+  } catch (err) {
+    console.error("Generate failed:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ===========================
