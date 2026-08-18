@@ -232,9 +232,24 @@ Return only the JSON object.`;
           },
         );
 
+        // 6a. Surface API failures — a non-2xx returns an error body with no
+        // choices array, which used to fall straight through to `continue`
+        if (!groqRes.ok) {
+          const errBody = await groqRes.text().catch(() => "<unreadable body>");
+          console.error(
+            `❌ Groq API ${groqRes.status} ${groqRes.statusText} for cluster ${cluster.cluster_key}: ${errBody.slice(0, 500)}`,
+          );
+          continue;
+        }
+
         const groqData = await groqRes.json();
         const raw = groqData?.choices?.[0]?.message?.content?.trim();
-        if (!raw) continue;
+        if (!raw) {
+          console.warn(
+            `⚠️ Groq returned no content for cluster ${cluster.cluster_key} (finish_reason=${groqData?.choices?.[0]?.finish_reason ?? "none"})`,
+          );
+          continue;
+        }
 
         // 7. Parse JSON response
         let intelligence;
@@ -271,7 +286,40 @@ Return only the JSON object.`;
         console.log(`✅ Intelligence post created: ${intelligence.headline}`);
       }
     } catch (err) {
-      console.error("❌ AI intelligence posts failed:", err.message, err.stack);
+      console.error("❌ AI intelligence posts failed:", err.message);
+
+      // pg attaches the offending relation/column and a character offset into
+      // the statement — without these a schema error is unattributable
+      if (err.code) {
+        console.error(
+          `   pg code=${err.code} routine=${err.routine ?? "?"} position=${err.position ?? "?"} schema=${err.schema ?? "?"} table=${err.table ?? "?"} column=${err.column ?? "?"} detail=${err.detail ?? "none"}`,
+        );
+      }
+
+      // 42703 = undefined_column. The column exists when checked by hand, so
+      // log what this connection actually resolves names against.
+      if (err.code === "42703") {
+        try {
+          const ctx = await pool.query(
+            `SELECT current_database() AS db, current_schema() AS schema,
+                    current_setting('search_path') AS search_path,
+                    to_regclass('posts')::text AS posts_resolves_to`,
+          );
+          console.error("   connection context:", ctx.rows[0]);
+
+          const cols = await pool.query(
+            `SELECT table_schema, string_agg(column_name, ', ' ORDER BY ordinal_position) AS columns
+             FROM information_schema.columns
+             WHERE table_name = 'posts'
+             GROUP BY table_schema`,
+          );
+          console.error("   posts columns by schema:", cols.rows);
+        } catch (probeErr) {
+          console.error("   schema probe failed:", probeErr.message);
+        }
+      }
+
+      console.error(err.stack);
     }
   });
 }
